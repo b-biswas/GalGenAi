@@ -3,70 +3,19 @@ Galaxy Image Simulator using Galsim
 Simulates HSC and HST observations of galaxies from the COSMOSWeb catalog
 """
 
+import csv
+import gc
 import numpy as np
 import galsim
+from pathlib import Path
+from astropy.io import fits
+from tqdm import tqdm
+from multiprocessing import Pool
 from galgenai.cosmos.cosmos_catalog import COSMOSWebCatalog
 import matplotlib.pyplot as plt
 from surveycodex import get_survey
 from surveycodex.utilities import mag2counts, mean_sky_level
 
-def generate_image_from_row(sim: GalaxySim, galaxy_row, filter_names=None, catalog_columns=None):
-    """
-    Generate multi-band images for a single galaxy
-
-    Parameters:
-    -----------
-    sim : GalaxySim
-        Galaxy simulator instance
-    galaxy_row : astropy.table.Row
-        Single row from catalog
-    filter_names : list
-        List of filter names to simulate
-    catalog_columns : dict
-        Mapping of parameter names to catalog column names
-
-    Returns:
-    --------
-    dict : Dictionary with filter names as keys and image arrays as values
-    """
-    if filter_names is None:
-        filter_names=sim.survey.available_filters
-
-    if catalog_columns is None:
-        catalog_columns = sim.catalog_columns
-
-    galaxy_params_multi_band = {}
-    psf_params_multi_band = {}
-
-    for filter_name in filter_names:
-        filter_obj = sim.survey.get_filter(filter_name)
-
-        mag_col = f"{catalog_columns['magnitude_prefix']}{filter_name}"
-        galaxy_params_multi_band[filter_name] = {
-            mag_col: float(galaxy_row[mag_col]),
-            catalog_columns['hlr']: float(galaxy_row[catalog_columns['hlr']] * 3600),
-            catalog_columns['sersic_n']: float(galaxy_row[catalog_columns['sersic_n']]),
-            catalog_columns['sersic_ratio']: float(galaxy_row[catalog_columns['sersic_ratio']]),
-            catalog_columns['sersic_angle']: float(galaxy_row[catalog_columns['sersic_angle']]),
-        }
-
-        psf_params_multi_band[filter_name] = {
-            "fwhm": filter_obj.psf_fwhm.value,
-            "beta": 3.0
-        }
-
-    # Generate images
-    multi_band_images, multi_band_pixel_variance = sim.simulate_galaxy(
-        galaxy_params_multiband=galaxy_params_multi_band,
-        add_noise="all",
-        psf_type="moffat",
-        psf_params_multiband=psf_params_multi_band,
-    )
-
-    # Convert to numpy arrays (copy so GalSim Image objects can be freed immediately)
-    images_dict = {band: img.array.copy() for band, img in multi_band_images.items()}
-    pixel_variance_dict = {band: pv.copy() for band, pv in multi_band_pixel_variance.items()}
-    return images_dict, pixel_variance_dict, galaxy_params_multi_band
 
 def sim_single_band_sersic_galaxy(flux, hlr, sersic_n, axis_ratio, position_angle, gsparams=None):
         """
@@ -102,11 +51,139 @@ def sim_single_band_sersic_galaxy(flux, hlr, sersic_n, axis_ratio, position_angl
 
         return gal
 
+def _save_galaxy_fits(image_array, var_array, path, filter_names):
+    """
+    Save image and inverse-variance arrays as a multi-extension FITS file.
+
+    HDU[0] (PrimaryHDU) : empty; header documents the file layout
+    HDU[1] (ImageHDU)   : image,  shape (N_bands, H, W), float32
+    HDU[2] (ImageHDU)   : ivar,   shape (N_bands, H, W), float32
+                          Inverse-variance: 1 / pixel_variance.
+    HDU[3] (ImageHDU)   : mask,   shape (N_bands, H, W), uint32
+                          Bitmask; 0 = unmasked.
+
+    Parameters
+    ----------
+    image_array : np.ndarray, shape (N_bands, H, W), dtype float32
+    var_array : np.ndarray, shape (N_bands, H, W), dtype float32
+        Per-pixel Poisson variance (galaxy signal + sky background counts).
+    path : Path or str
+    filter_names : list of str
+        Band labels written into the FITS headers (BAND0, BAND1, ...).
+    """
+    primary = fits.PrimaryHDU()
+    primary.header["COMMENT"] = "HDU[1] = IMAGE  (N_bands, H, W) float32"
+    primary.header["COMMENT"] = "HDU[2] = IVAR   (N_bands, H, W) float32  1/variance"
+    primary.header["COMMENT"] = "HDU[3] = MASK   (N_bands, H, W) uint32   0=unmasked"
+    primary.header["NBANDS"] = (len(filter_names), "Number of photometric bands")
+    for i, name in enumerate(filter_names):
+        primary.header[f"BAND{i}"] = name
+
+    hdu_image = fits.ImageHDU(image_array, name="IMAGE")
+    hdu_image.header["BUNIT"] = "electron/s"
+    for i, name in enumerate(filter_names):
+        hdu_image.header[f"BAND{i}"] = name
+
+    ivar_array = np.where(var_array > 0, 1.0 / var_array, 0.0).astype(np.float32)
+    hdu_ivar = fits.ImageHDU(ivar_array, name="IVAR")
+    hdu_ivar.header["BUNIT"] = "(electron/s)^-2"
+    hdu_ivar.header["COMMENT"] = "Inverse variance: 1/var, zero where var<=0"
+    for i, name in enumerate(filter_names):
+        hdu_ivar.header[f"BAND{i}"] = name
+
+    mask_array = np.zeros(image_array.shape, dtype=np.uint32)
+    hdu_mask = fits.ImageHDU(mask_array, name="MASK")
+    hdu_mask.header["BUNIT"] = "bitmask"
+    hdu_mask.header["COMMENT"] = "0 = unmasked; no bits set (simulated data)"
+    for i, name in enumerate(filter_names):
+        hdu_mask.header[f"BAND{i}"] = name
+
+    fits.HDUList([primary, hdu_image, hdu_ivar, hdu_mask]).writeto(str(path), overwrite=True)
+
+
+def _process_chunk(galaxy_rows_chunk, images_path, filter_names, sim_kwargs, worker_seed, show_progress=False):
+    """
+    Worker function: creates its own GalaxySim, generates images for a chunk
+    of galaxy rows, writes FITS files, and returns metadata rows. We have differnt worker seeds here.
+
+    Parameters
+    ----------
+    galaxy_rows_chunk : list of dict
+    images_path : str
+        Directory where FITS files are written (passed as str for pickling).
+    filter_names : list of str
+    sim_kwargs : dict
+        Keyword arguments forwarded to GalaxySim (survey_name, image_size).
+    worker_seed : int
+        Per-worker random seed so each process has an independent RNG stream.
+
+    Returns
+    -------
+    tuple (list of dict, int)
+        (metadata_rows, failed_count)
+    """
+    images_path = Path(images_path)
+    sim = GalaxySim(**sim_kwargs, random_seed=worker_seed)
+    catalog_columns = sim.catalog_columns
+
+    metadata_rows = []
+    failed_count = 0
+
+    iterator = tqdm(galaxy_rows_chunk, desc="Galaxies", leave=True) if show_progress else galaxy_rows_chunk
+    for i, gr in enumerate(iterator):
+        try:
+            images_dict, pixel_variance_dict, galaxy_params = sim.generate_image_from_row(gr, filter_names)
+
+            image_array = np.stack(
+                [images_dict[b] for b in filter_names], axis=0
+            ).astype(np.float32)
+            var_array = np.stack(
+                [pixel_variance_dict[b] for b in filter_names], axis=0
+            ).astype(np.float32)
+
+            galaxy_id = int(gr[catalog_columns['galid']])
+            filename = f"galaxy_{galaxy_id}.fits"
+            _save_galaxy_fits(image_array, var_array, images_path / filename, filter_names)
+
+            # Get the first filter's params (geometry is same across all filters)
+            first_filter_params = galaxy_params[filter_names[0]]
+
+            metadata_rows.append({
+                "filename": filename,
+                catalog_columns['galid']: galaxy_id,
+                catalog_columns['ra']: float(gr[catalog_columns['ra']]),
+                catalog_columns['dec']: float(gr[catalog_columns['dec']]),
+                catalog_columns['snr']: float(gr[catalog_columns['snr']]),
+                **{
+                    f"{catalog_columns['magnitude_prefix']}{b}": galaxy_params[b]['mag']
+                    for b in filter_names
+                },
+                catalog_columns['hlr']: first_filter_params['hlr'],
+                catalog_columns['sersic_n']: first_filter_params['sersic_n'],
+                catalog_columns['sersic_ratio']: first_filter_params['sersic_ratio'],
+                catalog_columns['sersic_angle']: first_filter_params['sersic_angle'],
+                catalog_columns['photz']: float(gr[catalog_columns['photz']]),
+            })
+
+        except Exception as e:
+            print(f"\nWarning: Failed galaxy {gr.get('id', '?')}: {e}")
+            failed_count += 1
+
+        if (i + 1) % 500 == 0:
+            gc.collect()
+
+    return metadata_rows, failed_count
+
+
+def _process_chunk_args(args):
+    """Adapter so pool.imap_unordered can call _process_chunk with a tuple."""
+    return _process_chunk(*args)
+
 
 class GalaxySim:
     """Galaxy image simulator using Galsim"""
 
-    def __init__(self, catalog=None, survey_name='HSC', image_size=53, random_seed=None, max_fft_size=512, catalog_columns=None):
+    def __init__(self, catalog=None, survey_name='HSC', image_size=53, random_seed=None, max_fft_size=512, catalog_columns=None, snr_threshold=50):
         """
         Initialize the simulator
 
@@ -123,7 +200,9 @@ class GalaxySim:
         max_fft_size : int, optional
             Maximum FFT size for Galsim operations (default: 512)
         catalog_columns : dict, optional
-            Mapping of parameter names to catalog column names
+            Mapping of parameter names to catalog column names (should include 'snr' key)
+        snr_threshold : float, optional
+            Minimum SNR threshold for filtering galaxies (default: 50)
         """
         self.catalog = catalog
         self.survey = get_survey(survey_name=survey_name)
@@ -132,6 +211,7 @@ class GalaxySim:
         self.random_seed = random_seed
         self.max_fft_size = max_fft_size
         self.catalog_columns = catalog_columns
+        self.snr_threshold = snr_threshold
         self.rng = galsim.BaseDeviate(random_seed or 12345)
         self.gsparams = galsim.GSParams(maximum_fft_size=max_fft_size)
 
@@ -173,24 +253,54 @@ class GalaxySim:
 
         return psf
     
-    def simulate_galaxy_single_band(self, galaxy_params_filter, psf, add_noise, sky_level, filter, galaxy_type="sersic", gsparams=None):
+    def simulate_galaxy_single_band(self, galaxy_params_filter, psf_params_filter, filter_name, psf_type="moffat", add_noise=None, galaxy_type="sersic", gsparams=None):
+        """
+        Simulate a single-band galaxy image
 
-        mag_col = f"{self.catalog_columns['magnitude_prefix']}{filter.name}"
-        gal_flux = mag2counts(galaxy_params_filter[mag_col], survey=self.survey, filter=filter)
+        Parameters:
+        -----------
+        galaxy_params_filter : dict
+            Galaxy parameters with standardized keys: 'mag', 'hlr', 'sersic_n', 'sersic_ratio', 'sersic_angle'
+        psf_params_filter : dict
+            PSF parameters with keys 'fwhm' (required) and 'beta' (for Moffat PSF)
+        filter_name : str
+            Name of the filter band (e.g., 'g', 'r', 'i')
+        psf_type : str, optional
+            Type of PSF to use: 'moffat' or 'gaussian' (default: 'moffat')
+        add_noise : str or None, optional
+            Type of noise to add: 'galaxy', 'background', 'all', or None (default: None)
+        galaxy_type : str, optional
+            Type of galaxy profile: 'sersic' or 'bulge+disk' (default: 'sersic')
+        gsparams : galsim.GSParams, optional
+            GSParams for FFT settings (default: None, uses self.gsparams)
+        """
+        if gsparams is None:
+            gsparams = self.gsparams
 
+        # Get filter object and compute sky level
+        filter = self.survey.get_filter(filter_name)
+        sky_level = mean_sky_level(self.survey, filter).to_value("electron")
+
+        # Get galaxy flux
+        gal_flux = mag2counts(galaxy_params_filter['mag'], survey=self.survey, filter=filter)
+
+        # Create galaxy profile
         if galaxy_type=="sersic":
             galaxy = sim_single_band_sersic_galaxy(
                 flux=gal_flux.value,
-                hlr=galaxy_params_filter[self.catalog_columns['hlr']],
-                sersic_n=galaxy_params_filter[self.catalog_columns['sersic_n']],
-                axis_ratio=galaxy_params_filter[self.catalog_columns['sersic_ratio']],
-                position_angle=galaxy_params_filter[self.catalog_columns['sersic_angle']],
+                hlr=galaxy_params_filter['hlr'],
+                sersic_n=galaxy_params_filter['sersic_n'],
+                axis_ratio=galaxy_params_filter['sersic_ratio'],
+                position_angle=galaxy_params_filter['sersic_angle'],
                 gsparams=gsparams,
             )
         elif galaxy_type=="bulge+disk":
             raise ValueError("Not yet implemented")
         else:
             raise ValueError(f"galaxy_type should be either sersic or bulge+disk, got {galaxy_type}")
+
+        # Create PSF
+        psf = self.get_psf(psf_type, psf_params_filter, gsparams=gsparams)
 
         # Convolve galaxy with PSF (both already have gsparams)
         gal_conv = galsim.Convolve([galaxy, psf], gsparams=gsparams)
@@ -221,57 +331,69 @@ class GalaxySim:
         return image, pixel_variance
 
     
-    def simulate_galaxy(self, galaxy_params_multiband, add_noise=None, psf_type="moffat", psf_params_multiband={}):
+    def simulate_galaxy(self, galaxy_params_multiband, psf_params_multiband, psf_type="moffat", add_noise=None, galaxy_type="sersic", gsparams=None):
         """
-        Simulate multiband galaxy observations
+        Simulate multiband galaxy observations.
+        We don't use catalog col names here so that this can be catalog independent.
 
         Parameters:
         -----------
-        galaxy_params : dict
+        galaxy_params_multiband : dict
             Dictionary with filter names as keys and galaxy parameters as values.
-            Each filter's parameters should be a dict for create_galaxy_profile.
-            Example: {'g': {'magnitude': 22.0, 'half_light_radius': 0.3, ...},
-                     'r': {'magnitude': 21.5, 'half_light_radius': 0.3, ...}}
-        add_noise : bool
-            Whether to add photon and sky noise
+            Each filter's parameters must use standardized keys:
+            - 'mag': magnitude in the band
+            Additionally for sersic profiles:
+            - 'hlr': half-light radius in arcsec
+            - 'sersic_n': Sersic index
+            - 'sersic_ratio': axis ratio (b/a)
+            - 'sersic_angle': position angle in degrees
+            [Yet to implement bulge+disk]
+            Example: {'g': {'mag': 22.0, 'hlr': 0.3, 'sersic_n': 1.0, 'sersic_ratio': 0.8, 'sersic_angle': 45.0},
+                     'r': {'mag': 21.5, 'hlr': 0.3, 'sersic_n': 1.0, 'sersic_ratio': 0.8, 'sersic_angle': 45.0}}
+        psf_params_multiband : dict
+            Dictionary with filter names as keys and PSF parameters as values.
+            Each filter's parameters should contain 'fwhm' (required) and 'beta' (for Moffat PSF).
+            Example: {'g': {'fwhm': 0.8, 'beta': 3.0},
+                     'r': {'fwhm': 0.7, 'beta': 3.0}}
+        psf_type : str, optional
+            Type of PSF to use: 'moffat' or 'gaussian' (default: 'moffat')
+        add_noise : str or None, optional
+            Type of noise to add: 'galaxy', 'background', 'all', or None (default: None)
+        galaxy_type : str, optional
+            Type of galaxy profile: 'sersic' or 'bulge+disk' (default: 'sersic')
+        gsparams : galsim.GSParams, optional
+            GSParams for FFT settings (default: None, uses self.gsparams)
 
         Returns:
         --------
-        dict of galsim.Image
-            Dictionary of simulated galaxy images keyed by filter name
+        tuple : (multi_band_image, multi_band_pixel_variance)
+            - multi_band_image: Dictionary of galsim.Image objects keyed by filter name
+            - multi_band_pixel_variance: Dictionary of variance arrays keyed by filter name
         """
-        # Check if galaxy_params contains filter names (multiband mode)
         if add_noise is not None:
             if add_noise not in ["galaxy", "background", "all"]:
                 raise ValueError(f"add_noise parameter should be either galaxy/background/all got {add_noise}")
 
-        gsparams = self.gsparams
-
-        psfs={}
-        sky_levels={}
-        for filter_name, psf_params in psf_params_multiband.items():
-            if filter_name not in self.survey.available_filters:
-                raise ValueError(f"Filter {filter_name} is not present in {self.survey}")
-            psfs[filter_name] = self.get_psf(psf_type, psf_params, gsparams=gsparams)
-            sky_levels[filter_name] = mean_sky_level(self.survey, self.survey.get_filter(filter_name)).to_value("electron")
+        if gsparams is None:
+            gsparams = self.gsparams
 
         multi_band_image = {}
         multi_band_pixel_variance = {}
 
         for filter_name, band_params in galaxy_params_multiband.items():
-
             if filter_name not in self.survey.available_filters:
                 raise ValueError(f"Filter '{filter_name}' not found in Survey")
 
-            # Get filter-specific configuration
-            filter = self.survey.get_filter(filter_name)
+            if filter_name not in psf_params_multiband:
+                raise ValueError(f"PSF parameters for filter '{filter_name}' not provided in psf_params_multiband")
 
             image, pixel_variance = self.simulate_galaxy_single_band(
                 galaxy_params_filter=band_params,
-                psf=psfs[filter_name],
+                psf_params_filter=psf_params_multiband[filter_name],
+                filter_name=filter_name,
+                psf_type=psf_type,
                 add_noise=add_noise,
-                sky_level=sky_levels[filter_name],
-                filter=filter,
+                galaxy_type=galaxy_type,
                 gsparams=gsparams,
             )
 
@@ -280,4 +402,81 @@ class GalaxySim:
 
         return multi_band_image, multi_band_pixel_variance
 
+    def generate_image_from_row(self, galaxy_row, filter_names=None):
+        """
+        Generate multi-band images for a single galaxy from a catalog row
 
+        Parameters:
+        -----------
+        galaxy_row : astropy.table.Row
+            Single row from catalog
+        filter_names : list, optional
+            List of filter names to simulate. If None, uses all available filters
+
+        Returns:
+        --------
+        tuple : (images_dict, pixel_variance_dict, galaxy_params_multi_band)
+            - images_dict: Dictionary with filter names as keys and image arrays as values
+            - pixel_variance_dict: Dictionary with filter names as keys and variance arrays as values
+            - galaxy_params_multi_band: Dictionary with galaxy parameters for each filter
+        """
+        if filter_names is None:
+            filter_names = self.survey.available_filters
+
+        galaxy_params_multi_band = {}
+        psf_params_multi_band = {}
+
+        for filter_name in filter_names:
+            filter_obj = self.survey.get_filter(filter_name)
+
+            # Extract from catalog using catalog column names
+            # but create dict with standardized parameter names
+            mag_col = f"{self.catalog_columns['magnitude_prefix']}{filter_name}"
+            galaxy_params_multi_band[filter_name] = {
+                "mag": float(galaxy_row[mag_col]),
+                "hlr": float(galaxy_row[self.catalog_columns['hlr']] * 3600),
+                "sersic_n": float(galaxy_row[self.catalog_columns['sersic_n']]),
+                "sersic_ratio": float(galaxy_row[self.catalog_columns['sersic_ratio']]),
+                "sersic_angle": float(galaxy_row[self.catalog_columns['sersic_angle']]),
+            }
+
+            psf_params_multi_band[filter_name] = {
+                "fwhm": filter_obj.psf_fwhm.value,
+                "beta": 3.0
+            }
+
+        # Generate images
+        multi_band_images, multi_band_pixel_variance = self.simulate_galaxy(
+            galaxy_params_multi_band,
+            psf_params_multi_band,
+            psf_type="moffat",
+            add_noise="all",
+        )
+
+        images_dict = {band: img.array.copy() for band, img in multi_band_images.items()}
+        pixel_variance_dict = {band: pv.copy() for band, pv in multi_band_pixel_variance.items()}
+        return images_dict, pixel_variance_dict, galaxy_params_multi_band
+
+    def filter_high_snr_galaxies(self, inplace=True):
+        """
+        Filter galaxies with high SNR using self.snr_threshold and self.catalog_columns['snr']
+
+        Returns:
+        --------
+        filtered_data : astropy.table.Table
+            Filtered catalog data
+        """
+        if self.catalog is None:
+            raise ValueError("No catalog loaded. Please set self.catalog")
+
+        if self.catalog_columns is None or 'snr' not in self.catalog_columns:
+            raise ValueError("catalog_columns must be set and contain 'snr' key")
+
+        snr_column = self.catalog_columns['snr']
+        print(f"\nFiltering galaxies with SNR > {self.snr_threshold}...")
+        filtered = self.catalog.data[self.catalog.data[snr_column] > self.snr_threshold]
+        print(f"Found {len(filtered)} galaxies with SNR > {self.snr_threshold}")
+
+        if inplace:
+            self.catalog.data = filtered
+        return filtered
