@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from surveycodex import get_survey
 from surveycodex.utilities import mag2counts, mean_sky_level
 
-def generate_image_from_row(sim: GalaxySim, galaxy_row, filter_names=None):
+def generate_image_from_row(sim: GalaxySim, galaxy_row, filter_names=None, catalog_columns=None):
     """
     Generate multi-band images for a single galaxy
 
@@ -22,6 +22,8 @@ def generate_image_from_row(sim: GalaxySim, galaxy_row, filter_names=None):
         Single row from catalog
     filter_names : list
         List of filter names to simulate
+    catalog_columns : dict
+        Mapping of parameter names to catalog column names
 
     Returns:
     --------
@@ -29,18 +31,23 @@ def generate_image_from_row(sim: GalaxySim, galaxy_row, filter_names=None):
     """
     if filter_names is None:
         filter_names=sim.survey.available_filters
+
+    if catalog_columns is None:
+        catalog_columns = sim.catalog_columns
+
     galaxy_params_multi_band = {}
     psf_params_multi_band = {}
 
     for filter_name in filter_names:
         filter_obj = sim.survey.get_filter(filter_name)
 
+        mag_col = f"{catalog_columns['magnitude_prefix']}{filter_name}"
         galaxy_params_multi_band[filter_name] = {
-            "magnitude": float(galaxy_row[f"mag_model_hsc-{filter_name}"]),
-            "hlr": float(galaxy_row['radius_sersic'] * 3600),
-            "sersic_n": float(galaxy_row['sersic']),
-            "axis_ratio": float(galaxy_row['axratio_sersic']),
-            "position_angle": float(galaxy_row['angle_sersic']),
+            mag_col: float(galaxy_row[mag_col]),
+            catalog_columns['hlr']: float(galaxy_row[catalog_columns['hlr']] * 3600),
+            catalog_columns['sersic_n']: float(galaxy_row[catalog_columns['sersic_n']]),
+            catalog_columns['sersic_ratio']: float(galaxy_row[catalog_columns['sersic_ratio']]),
+            catalog_columns['sersic_angle']: float(galaxy_row[catalog_columns['sersic_angle']]),
         }
 
         psf_params_multi_band[filter_name] = {
@@ -99,7 +106,7 @@ def sim_single_band_sersic_galaxy(flux, hlr, sersic_n, axis_ratio, position_angl
 class GalaxySim:
     """Galaxy image simulator using Galsim"""
 
-    def __init__(self, catalog=None, survey_name='HSC', image_size=53, random_seed=None, max_fft_size=512):
+    def __init__(self, catalog=None, survey_name='HSC', image_size=53, random_seed=None, max_fft_size=512, catalog_columns=None):
         """
         Initialize the simulator
 
@@ -115,6 +122,8 @@ class GalaxySim:
             Random seed for reproducibility. If None, uses 12345 (default: None)
         max_fft_size : int, optional
             Maximum FFT size for Galsim operations (default: 512)
+        catalog_columns : dict, optional
+            Mapping of parameter names to catalog column names
         """
         self.catalog = catalog
         self.survey = get_survey(survey_name=survey_name)
@@ -122,6 +131,7 @@ class GalaxySim:
         self.image_size = image_size
         self.random_seed = random_seed
         self.max_fft_size = max_fft_size
+        self.catalog_columns = catalog_columns
         self.rng = galsim.BaseDeviate(random_seed or 12345)
         self.gsparams = galsim.GSParams(maximum_fft_size=max_fft_size)
 
@@ -165,15 +175,16 @@ class GalaxySim:
     
     def simulate_galaxy_single_band(self, galaxy_params_filter, psf, add_noise, sky_level, filter, galaxy_type="sersic", gsparams=None):
 
-        gal_flux = mag2counts(galaxy_params_filter["magnitude"], survey=self.survey, filter=filter)
+        mag_col = f"{self.catalog_columns['magnitude_prefix']}{filter.name}"
+        gal_flux = mag2counts(galaxy_params_filter[mag_col], survey=self.survey, filter=filter)
 
         if galaxy_type=="sersic":
             galaxy = sim_single_band_sersic_galaxy(
                 flux=gal_flux.value,
-                hlr=galaxy_params_filter["hlr"],
-                sersic_n=galaxy_params_filter["sersic_n"],
-                axis_ratio=galaxy_params_filter["axis_ratio"],
-                position_angle=galaxy_params_filter["position_angle"],
+                hlr=galaxy_params_filter[self.catalog_columns['hlr']],
+                sersic_n=galaxy_params_filter[self.catalog_columns['sersic_n']],
+                axis_ratio=galaxy_params_filter[self.catalog_columns['sersic_ratio']],
+                position_angle=galaxy_params_filter[self.catalog_columns['sersic_angle']],
                 gsparams=gsparams,
             )
         elif galaxy_type=="bulge+disk":
