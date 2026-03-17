@@ -1,33 +1,40 @@
 """
-Compute and save normalization statistics for COSMOS dataset.
+Compute and save normalization statistics for galaxy datasets (COSMOS or HSC MMU).
 
 This script:
 1. Reads dataset path, crop size (nx), and condition columns from config file
-2. Loads the entire FITS dataset (no splitting)
+2. Loads the entire dataset (COSMOS FITS or HSC MMU Arrow format)
 3. Computes image normalization statistics using min-max normalization:
    - Linear: Direct min-max normalization on raw flux
    - Arcsinh: Arcsinh stretch (per-band scale) + min-max normalization
-4. Computes conditional normalization statistics (min-max)
+4. Computes conditional normalization statistics (min-max) - COSMOS only
 5. Saves all stats as YAML files (rounded to 2 decimal places)
 6. Optionally updates the config file with the computed statistics
 
-By default, uses the entire dataset for computing statistics. You can use
---n-samples to compute on a subset for faster computation.
+By default uses a subset of 2000 objects to compute the statistics.
+--n-samples can be used to modify this.
 
 The script reads these parameters from the config file:
   - cosmos.hf_dataset_path: Path to dataset directory
   - training.nx: Crop size for images
-  - training.cnf.condition_cols: List of conditioning columns
+  - training.cnf.condition_cols: List of conditioning columns (COSMOS only)
 
 Run with:
-    # Example:
-    uv run python scripts/compute_normalization_stats.py --n-samples 2000 --config-path ./my_config.yaml
+    # Minimal example:
+        uv run python scripts/compute_norm_stats.py --dataset-type cosmos
+
+    # COSMOS dataset:
+    uv run python scripts/compute_norm_stats.py --dataset-type cosmos --n-samples 2000 --config-path ./my_config.yaml
+
+    # HSC MMU dataset:
+    uv run python scripts/compute_norm_stats.py --dataset-type hsc_mmu --config-path ./my_config.yaml
 """
 
 import argparse
 from pathlib import Path
 import yaml
 
+from datasets import load_from_disk
 from galgenai.config import load_config
 from galgenai.data.cosmos_dataset import load_fits_dataset
 from galgenai.data.hsc import HSCDataset
@@ -42,11 +49,18 @@ from galgenai.data.normalization import (
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Compute normalization statistics for COSMOS dataset. "
+        description="Compute normalization statistics for galaxy datasets. "
                     "All dataset parameters are read from config file.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
+    parser.add_argument(
+        "--dataset-type",
+        type=str,
+        choices=["cosmos", "hsc_mmu"],
+        required=True,
+        help="Dataset type: 'cosmos' for COSMOS FITS dataset, 'hsc_mmu' for HSC MMU dataset"
+    )
     parser.add_argument(
         "--n-samples",
         type=int,
@@ -69,26 +83,26 @@ def parse_args():
         "--skip-conditions",
         action="store_true",
         default=False,
-        help="Skip computing conditional normalization statistics (default: False)"
+        help="Skip computing conditional normalization statistics (default: False for cosmos, True for hsc_mmu)"
     )
 
     return parser.parse_args()
 
 
-def update_config_file(config_path: Path, stats_dict: dict):
+def update_config_file(config_path: Path, stats_dict: dict, dataset_type: str):
     """Update the config file with computed normalization statistics."""
     # Load existing config
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
 
-    # Ensure cosmos.normalization exists
-    if "cosmos" not in config:
-        config["cosmos"] = {}
-    if "normalization" not in config["cosmos"]:
-        config["cosmos"]["normalization"] = {}
+    # Ensure the section and normalization exists
+    if dataset_type not in config:
+        config[dataset_type] = {}
+    if "normalization" not in config[dataset_type]:
+        config[dataset_type]["normalization"] = {}
 
     # Update with computed stats
-    config["cosmos"]["normalization"] = stats_dict
+    config[dataset_type]["normalization"] = stats_dict
 
     # Write back to file
     with open(config_path, "w") as f:
@@ -110,12 +124,12 @@ def main():
         )
 
     # Extract parameters from config
-    cosmos_cfg = cfg.get("cosmos", {})
+    dataset_cfg = cfg.get(args.dataset_type, {})
     train_cfg = cfg.get("training", {})
 
-    data_dir = cosmos_cfg.get("hf_dataset_path")
+    data_dir = dataset_cfg.get("hf_dataset_path")
     if not data_dir:
-        raise ValueError("cosmos.hf_dataset_path not found in config file")
+        raise ValueError(f"{args.dataset_type}.hf_dataset_path not found in config file")
 
     nx = train_cfg.get("nx", 32)
     condition_cols = train_cfg.get("cnf", {}).get("condition_cols", [])
@@ -125,10 +139,11 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 70)
-    print("COMPUTING NORMALIZATION STATISTICS FOR COSMOS DATASET")
+    print(f"COMPUTING NORMALIZATION STATISTICS FOR {args.dataset_type.upper()} DATASET")
     print("=" * 70)
 
     print(f"\nConfig file: {args.config_path if args.config_path else 'default'}")
+    print(f"Dataset type: {args.dataset_type}")
     print(f"Dataset path: {data_dir}")
     print(f"Output directory: {output_dir}")
     print(f"Number of samples: {args.n_samples if args.n_samples else 'entire dataset'}")
@@ -143,12 +158,25 @@ def main():
     print("Loading dataset...")
     print("-" * 70)
 
-    dataset_raw = load_fits_dataset(
-        data_dir=data_dir,
-        metadata_file="metadata.csv",
-    )
+    if args.dataset_type == "hsc_mmu":
+        print(f"Loading HSC MMU dataset from: {data_dir}")
+        dataset_raw = load_from_disk(data_dir)
+    else:
+        print(f"Loading COSMOS FITS dataset from: {data_dir}")
+        dataset_raw = load_fits_dataset(
+            data_dir=data_dir,
+            metadata_file="metadata.csv",
+        )
 
     print(f"Dataset size: {len(dataset_raw)}")
+
+
+    # -----------------------------------------------------------------------
+    # Compute image normalization stats
+    # -----------------------------------------------------------------------
+    print("\n" + "-" * 70)
+    print("Computing image normalization statistics...")
+    print("-" * 70)
 
     # Wrap dataset with HSCDataset (no splitting, entire dataset)
     print("\nWrapping dataset for image normalization...")
@@ -159,13 +187,6 @@ def main():
         return_aux_data=False,  # Only need flux
     )
     print(f"Wrapped dataset size: {len(wrapped_dataset)}")
-
-    # -----------------------------------------------------------------------
-    # Compute image normalization stats
-    # -----------------------------------------------------------------------
-    print("\n" + "-" * 70)
-    print("Computing image normalization statistics...")
-    print("-" * 70)
 
     # Linear normalization
     print("\n[1/3] Computing linear normalization stats...")
@@ -202,7 +223,11 @@ def main():
     # -----------------------------------------------------------------------
     print("\n[3/3] Computing conditional normalization stats...")
 
-    if args.skip_conditions:
+    if args.dataset_type == "hsc_mmu":
+        print("  Skipping conditional stats (HSC MMU dataset).")
+        cond_stats = None
+        cond_stats_path = None
+    elif args.skip_conditions:
         print("  Skipping conditional stats (--skip-conditions flag set).")
         cond_stats = None
         cond_stats_path = None
@@ -265,7 +290,7 @@ def main():
         else:
             stats_dict["conditions"] = {}
 
-        update_config_file(config_path, stats_dict)
+        update_config_file(config_path, stats_dict, args.dataset_type)
 
     # -----------------------------------------------------------------------
     # Summary
@@ -287,24 +312,10 @@ Files created:
 
     if args.write_to_config:
         print(f"\nStatistics written to config file:")
-        print(f"  cosmos.normalization.image.linear")
-        print(f"  cosmos.normalization.image.arcsinh")
+        print(f"  {args.dataset_type}.normalization.image.linear")
+        print(f"  {args.dataset_type}.normalization.image.arcsinh")
         if cond_stats:
-            print(f"  cosmos.normalization.conditions")
-
-    print("\nUsage in training scripts:")
-    print("""
-    # Load image normalization from config
-    linear_stats = cfg["cosmos"]["normalization"]["image"]["linear"]
-    arcsinh_stats = cfg["cosmos"]["normalization"]["image"]["arcsinh"]
-
-    # Or load from YAML files
-    from galgenai.data.normalization import get_image_norm_fn
-    image_norm_fn, norm_stats = get_image_norm_fn(
-        img_norm_type="arcsinh",
-        stats_path="./normalization_stats/arcsinh_norm_stats.yaml"
-    )
-""")
+            print(f"  {args.dataset_type}.normalization.conditions")
 
 
 if __name__ == "__main__":
