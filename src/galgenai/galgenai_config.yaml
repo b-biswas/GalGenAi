@@ -1,3 +1,4 @@
+run_name: arcsinh
 cosmos:
   catalog_path: src/galgenai/cosmos/data/test_catalog_30objects.fits
   hf_dataset_path: src/galgenai/cosmos/data/HSC_dataset30
@@ -80,3 +81,38 @@ cosmos:
       - 26.93
       - 29.05
       - 4.96
+hsc_mmu:
+  hf_dataset_path: <<add path>>
+training:
+  output_dir: scripts/cosmos_output
+  nx: 32
+  batch_size: 64
+  model:
+    in_channels: 5
+    latent_dim: 32
+    base_channels: 16
+  vae:
+    epochs: 30
+    lr: 0.0001
+    beta: 1.0e-08
+    save_every: 8
+    validate_every: 5
+    norm_type: arcsinh
+    reconstruction_loss_fn: mse
+  cnf:
+    steps: 20000
+    lr: 0.0001
+    warmup: 1000
+    num_blocks: 8
+    hidden_dim: 256
+    sample_every: 5000
+    validate_every: 2000
+    save_every: 10000
+    condition_cols:
+    - mag_model_hsc-g
+    - mag_model_hsc-r
+    - mag_model_hsc-i
+    - mag_model_hsc-z
+    - mag_model_hsc-y
+    - zfinal
+
