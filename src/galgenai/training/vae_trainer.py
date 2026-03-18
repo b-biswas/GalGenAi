@@ -170,11 +170,14 @@ class VAETrainer(BaseTrainer[VAETrainingConfig]):
         print("-" * 60)
 
         self.model.train()
-        try:
-            self.model = torch.compile(self.model)
-            print("Model compiled with torch.compile()")
-        except RuntimeError:
-            print("torch.compile() not available, skipping")
+        if self.device.type == "mps":
+            print("torch.compile() skipped on MPS")
+        else:
+            try:
+                self.model = torch.compile(self.model)
+                print("Model compiled with torch.compile()")
+            except RuntimeError:
+                print("torch.compile() not available, skipping")
 
         # Warmup forward pass to pay compile cost before the
         # first epoch.
@@ -228,9 +231,9 @@ class VAETrainer(BaseTrainer[VAETrainingConfig]):
 
             self._log_metrics(train_metrics)
 
-            # Checkpointing
+            # Checkpointing (regular scheduled checkpoints)
             if epoch % self.config.save_every == 0:
-                self.save_checkpoint(is_best=is_best)
+                self.save_checkpoint(is_best=False)
 
         print("\nTraining complete!")
         self.save_checkpoint(is_best=False)
