@@ -14,6 +14,8 @@ cosmos:
   max_galaxies: 50000 # inluding train + test + val [Some simulation may fail]
   seed: 42 # To add noise etc.
   max_fft_size: 512
+  mag_sentinel: 900.0  # Sentinel value for invalid magnitudes
+  redshift_sentinel: -99.0  # Sentinel value for invalid redshift
   catalog_columns: # These are names of catalog columns
     mag_cols:
       - mag_model_hsc-g
@@ -88,6 +90,10 @@ cosmos:
       - 4.96
 hsc_mmu:
   hf_dataset_path: data/hsc_mmu
+  num_workers: 0
+  train_ratio: 0.8
+  val_ratio: 0.1
+  split_seed: 42
   normalization:
     image:
       linear:
@@ -119,6 +125,15 @@ training:
     validate_every: 5
     norm_type: arcsinh
     reconstruction_loss_fn: mse
+  lcfm:
+    steps: 100000
+    lr: 0.0002
+    warmup: 1000
+    beta: 0.001
+    sample_every: 5000
+    validate_every: 500
+    save_every: 10000
+    log_every: 100
   cnf:
     steps: 20000
     lr: 0.0001

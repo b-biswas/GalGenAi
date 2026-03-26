@@ -222,6 +222,7 @@ class LCFMTrainer(BaseTrainer[LCFMTrainingConfig]):
                 }
 
                 # Validation
+                val_metrics = {}
                 if self.global_step % self.config.validate_every == 0:
                     val_metrics = self.validate()
                     if val_metrics:

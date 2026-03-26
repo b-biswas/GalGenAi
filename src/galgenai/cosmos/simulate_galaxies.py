@@ -155,14 +155,14 @@ def _process_chunk(galaxy_rows_chunk, images_path, filter_names, sim_kwargs, wor
                 catalog_columns['dec']: float(gr[catalog_columns['dec']]),
                 catalog_columns['snr']: float(gr[catalog_columns['snr']]),
                 **{
-                    f"{catalog_columns['magnitude_prefix']}{b}": galaxy_params[b]['mag']
+                    next(col for col in catalog_columns['mag_cols'] if col.endswith(b)): galaxy_params[b]['mag']
                     for b in filter_names
                 },
                 catalog_columns['hlr']: first_filter_params['hlr'],
                 catalog_columns['sersic_n']: first_filter_params['sersic_n'],
                 catalog_columns['sersic_ratio']: first_filter_params['sersic_ratio'],
                 catalog_columns['sersic_angle']: first_filter_params['sersic_angle'],
-                catalog_columns['photz']: float(gr[catalog_columns['photz']]),
+                catalog_columns['redshift_col']: float(gr[catalog_columns['redshift_col']]),
             })
 
         except Exception as e:
@@ -200,7 +200,7 @@ class GalaxySim:
         max_fft_size : int, optional
             Maximum FFT size for Galsim operations (default: 512)
         catalog_columns : dict, optional
-            Mapping of parameter names to catalog column names (should include 'snr' key)
+            Mapping of parameter names to catalog column names (should include 'mag_cols' and 'snr' keys)
         snr_threshold : float, optional
             Minimum SNR threshold for filtering galaxies (default: 50)
         """
@@ -431,7 +431,8 @@ class GalaxySim:
 
             # Extract from catalog using catalog column names
             # but create dict with standardized parameter names
-            mag_col = f"{self.catalog_columns['magnitude_prefix']}{filter_name}"
+            # Find the magnitude column that corresponds to this filter
+            mag_col = next(col for col in self.catalog_columns['mag_cols'] if col.endswith(filter_name))
             galaxy_params_multi_band[filter_name] = {
                 "mag": float(galaxy_row[mag_col]),
                 "hlr": float(galaxy_row[self.catalog_columns['hlr']] * 3600),
