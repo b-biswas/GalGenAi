@@ -119,10 +119,13 @@ class BaseTrainer(ABC, Generic[ConfigT]):
                 self.output_dir / "checkpoints" / f"step_{self.global_step}.pt"
             )
 
+        # Unwrap torch.compile() wrapper so state_dict keys are clean
+        raw_model = getattr(self.model, "_orig_mod", self.model)
+
         checkpoint = {
             "global_step": self.global_step,
             "current_epoch": self.current_epoch,
-            "model_state_dict": self.model.state_dict(),
+            "model_state_dict": raw_model.state_dict(),
             "optimizer_state_dict": (
                 self.optimizer.state_dict() if self.optimizer else None
             ),
