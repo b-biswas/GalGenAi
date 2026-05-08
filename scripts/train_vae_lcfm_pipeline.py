@@ -288,7 +288,7 @@ if __name__ == '__main__':
             latent_dim=latent_dim,
             input_size=nx,
         )
-        checkpoint = torch.load(vae_ckpt_path, map_location=device)
+        checkpoint = torch.load(vae_ckpt_path, map_location=device, weights_only=False)
         vae.load_state_dict(checkpoint["model_state_dict"])
         print(f"Loaded VAE from: {vae_ckpt_path}")
     
@@ -317,7 +317,7 @@ if __name__ == '__main__':
         latent_dim=latent_dim,
         input_size=nx,
     )
-    encoder.load_state_dict(torch.load(encoder_path, map_location=device))
+    encoder.load_state_dict(torch.load(encoder_path, map_location=device, weights_only=False))
     encoder.to(device).eval()
     print(f"Loaded encoder from: {encoder_path}")
     
