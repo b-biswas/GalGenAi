@@ -122,8 +122,8 @@ def main():
     # Copy the full config file to output directory
     config_file_path = Path(__file__).parent.parent / "src" / "galgenai" / "galgenai_config.yaml"
     if config_file_path.exists():
-        shutil.copy(config_file_path, output_dir / "galgenai_config.yaml")
-        print(f"Copied config to: {output_dir / 'galgenai_config.yaml'}")
+        shutil.copy(config_file_path, output_dir / "cnf_galgenai_config.yaml")
+        print(f"Copied config to: {output_dir / 'cnf_galgenai_config.yaml'}")
 
     cond_stats_save_path = output_dir / "cond_stats.yaml"
     norm_stats_save_path = output_dir / "norm_stats.yaml"
