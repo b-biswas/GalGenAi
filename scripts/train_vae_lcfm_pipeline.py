@@ -14,6 +14,7 @@ Run with:
 """
 
 import argparse
+import shutil
 import torch
 from pathlib import Path
 from datasets import load_from_disk
@@ -103,9 +104,10 @@ if __name__ == '__main__':
         model_cfg = train_cfg["model"]
         vae_cfg = train_cfg["vae"]
         norm_cfg = dataset_cfg["normalization"]
+        run_name = cfg["run_name"]
 
         # Training config
-        output_dir = Path(train_cfg["output_dir"]) / "pipeline"
+        output_dir = Path(train_cfg["output_dir"]) / run_name
         nx = train_cfg["nx"]
         batch_size = train_cfg["batch_size"]
 
@@ -126,10 +128,18 @@ if __name__ == '__main__':
             f"Missing required config value: {e}. "
             "Please ensure all required values are present in the config file."
         )
-    
+
+    print(f"Run name: {run_name}")
+
     # Create output directory structure
     output_dir.mkdir(parents=True, exist_ok=True)
     print(f"Output directory: {output_dir.absolute()}")
+
+    # Copy the full config file to output directory
+    config_file_path = Path(__file__).parent.parent / "src" / "galgenai" / "galgenai_config.yaml"
+    if config_file_path.exists():
+        shutil.copy(config_file_path, output_dir / "lcfm_galgenai_config.yaml")
+        print(f"Copied config to: {output_dir / 'lcfm_galgenai_config.yaml'}")
     
     
     # =================================================================
