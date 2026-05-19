@@ -9,6 +9,7 @@ from .config import (
     CNFTrainingConfig,
     LCFMTrainingConfig,
     VAETrainingConfig,
+    load_cfm_training_config,
     load_cnf_training_config,
     load_lcfm_training_config,
     load_vae_training_config,
@@ -27,6 +28,7 @@ __all__ = [
     # Config loaders
     "load_vae_training_config",
     "load_lcfm_training_config",
+    "load_cfm_training_config",
     "load_cnf_training_config",
     # Trainers
     "BaseTrainer",
