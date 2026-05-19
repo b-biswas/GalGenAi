@@ -134,41 +134,64 @@ def load_fits_dataset(
         else:
             raise ValueError(f"Warning: Redshift column '{redshift_col}' not found in metadata. Skipping redshift filtering.")
 
-    def make_generator(rows, images_path):
-        def generator():
-            for _, row in rows.iterrows():
-                with fits.open(images_path / row["filename"]) as hdul:
-                    image = hdul["IMAGE"].data.astype("float32")
-                    n_bands = image.shape[0]
-                    bands = [
-                        hdul["IMAGE"].header.get(f"BAND{i}", f"band{i}")
-                        for i in range(n_bands)
-                    ]
+    # Check for Arrow cache (memory-mappable, avoids reopening FITS files)
+    from datasets import load_from_disk
+    cache_suffix = ""
 
-                    if "IVAR" in hdul:
-                        ivar = hdul["IVAR"].data.astype("float32")
-                    else:
-                        ivar = np.ones_like(image)
+    cache_name = f"arrow_cache{cache_suffix}" if cache_suffix else "arrow_cache_raw"
+    cache_path = data_dir / cache_name
 
-                    if "MASK" in hdul:
-                        mask = hdul["MASK"].data.astype(np.int32)
-                    else:
-                        mask = np.zeros(image.shape, dtype=np.int32)
+    if cache_path.exists():
+        print(f"Loading from Arrow cache: {cache_path}")
+        dataset = load_from_disk(str(cache_path))
+    else:
+        print(f"Arrow cache not found. Loading {len(metadata):,} FITS files...")
+        print("This ONE-TIME operation will take a few minutes.")
 
-                result = {
-                    "image": {
-                        "flux": image,
-                        "ivar": ivar,
-                        "mask": mask,
-                        "band": bands,
-                    },
-                    **row.to_dict(),
+        from tqdm import tqdm
+
+        n_total = len(metadata)
+        # Process all samples in ONE pass (no concatenation = no fragmentation)
+        print(f"Processing {n_total:,} samples...")
+        all_samples = []
+
+        for i in tqdm(range(n_total), desc="Loading FITS files"):
+            row = metadata.iloc[i]
+            with fits.open(images_path / row["filename"]) as hdul:
+                # Load raw data
+                flux = hdul["IMAGE"].data.astype("float32")
+
+                if "IVAR" in hdul:
+                    ivar = hdul["IVAR"].data.astype("float32")
+                else:
+                    ivar = np.ones_like(flux)
+
+                if "MASK" in hdul:
+                    mask = hdul["MASK"].data.astype(np.int32)
+                else:
+                    mask = np.zeros(flux.shape, dtype=np.int32)
+
+            sample = {
+                "image":{
+                    "flux": flux,
+                    "ivar": ivar,
+                    "mask": mask,
                 }
-                yield result
-        return generator
+            }
 
-    gen = make_generator(metadata, images_path)
-    dataset = Dataset.from_generator(gen)
+            sample.update(row.to_dict())
+
+            all_samples.append(sample)
+
+        print(f"Creating Arrow cache...")
+        dataset = Dataset.from_list(all_samples)
+        del all_samples
+
+        # Save to disk with sharding for optimal memory mapping
+        print(f"Saving to: {cache_path}")
+        dataset.save_to_disk(str(cache_path))
+        cache_size_mb = sum(f.stat().st_size for f in cache_path.rglob("*") if f.is_file()) / 1e6
+        print(f"Cached! ({cache_size_mb:.1f} MB) Future loads will be instant.")
 
     # Apply format if specified
     if format is not None:
