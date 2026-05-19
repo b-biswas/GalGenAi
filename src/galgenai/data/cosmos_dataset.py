@@ -166,11 +166,18 @@ def load_fits_dataset(
 
         n_total = len(metadata)
 
-        # Get original image size from first FITS file
+        # Get original image size and band names from first FITS file
         first_row = metadata.iloc[0]
         with fits.open(images_path / first_row["filename"]) as hdul:
             orig_shape = hdul["IMAGE"].data.shape
             og_h, og_w = orig_shape[1], orig_shape[2]
+
+            # Extract band names from FITS header (same for all images)
+            n_bands = orig_shape[0]
+            bands = [
+                hdul["IMAGE"].header.get(f"BAND{i}", f"band{i}")
+                for i in range(n_bands)
+            ]
 
         if nx is not None:
             # Calculate crop indices
@@ -187,13 +194,6 @@ def load_fits_dataset(
             with fits.open(images_path / row["filename"]) as hdul:
                 # Load raw data
                 flux = hdul["IMAGE"].data.astype("float32")
-
-                # Extract band names from FITS header
-                n_bands = flux.shape[0]
-                bands = [
-                    hdul["IMAGE"].header.get(f"BAND{i}", f"band{i}")
-                    for i in range(n_bands)
-                ]
 
                 if "IVAR" in hdul:
                     ivar = hdul["IVAR"].data.astype("float32")
