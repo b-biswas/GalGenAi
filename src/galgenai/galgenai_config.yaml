@@ -125,6 +125,7 @@ training:
     beta: 1.0e-08
     save_every: 8
     validate_every: 5
+    log_every: 1
     norm_type: arcsinh
     reconstruction_loss_fn: mse
   lcfm:

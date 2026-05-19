@@ -119,7 +119,7 @@ def load_vae_training_config(config_path: Optional[str] = None) -> VAETrainingCo
     vae_config = training_config["vae"]
 
     # Automatically append /vae to output directory
-    output_dir = Path(training_config["output_dir"]) / "vae"
+    output_dir = Path(training_config["output_dir"]) / config["run_name"] /"vae"
 
     return VAETrainingConfig(
         # VAE-specific
@@ -159,7 +159,7 @@ def load_lcfm_training_config(config_path: Optional[str] = None) -> LCFMTraining
     lcfm_config = training_config["lcfm"]
 
     # Automatically append /lcfm to output directory
-    output_dir = Path(training_config["output_dir"]) / "lcfm"
+    output_dir = Path(training_config["output_dir"]) / config["run_name"] / "lcfm"
 
     return LCFMTrainingConfig(
         # LCFM-specific
@@ -201,7 +201,7 @@ def load_cnf_training_config(config_path: Optional[str] = None) -> CNFTrainingCo
     cnf_config = training_config["cnf"]
 
     # Automatically append /cnf to output directory
-    output_dir = Path(training_config["output_dir"]) / "cnf"
+    output_dir = Path(training_config["output_dir"]) / config["run_name"] / "cnf"
 
     return CNFTrainingConfig(
         # CNF-specific
