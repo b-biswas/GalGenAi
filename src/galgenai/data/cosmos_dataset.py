@@ -11,7 +11,8 @@ from torch.utils.data import DataLoader, random_split
 from galgenai.data.hsc import HSCDataset
 from galgenai.data.latent import precompute_latents, LatentDataset
 
-#TODO: CHECK catalog what the sentinel values are
+
+# TODO: CHECK catalog what the sentinel values are
 def load_fits_dataset(
     data_dir,
     metadata_file="metadata.csv",
@@ -29,7 +30,7 @@ def load_fits_dataset(
     All galaxies are stored together under ``data_dir/images/`` with
     metadata CSV file(s). The returned dataset is then split in make_loaders().
 
-    The returned dataset has one column image (nested dict with keys: 
+    The returned dataset has one column image (nested dict with keys:
     flux, ivar, mask, band) plus all metadata columns from
     the CSV. This layout matches the HSC dataset format so that
     hsc.HSCDataset can be used directly.
@@ -113,23 +114,30 @@ def load_fits_dataset(
             metadata = metadata[mask].reset_index(drop=True)
             n_removed = initial_count - len(metadata)
             if n_removed > 0:
-                print(f"Filtered {n_removed} galaxies with invalid magnitudes (sentinel={mag_sentinel})")
+                print(
+                    f"Filtered {n_removed} galaxies with invalid magnitudes (sentinel={mag_sentinel})"
+                )
                 print(f"Remaining: {len(metadata)} galaxies")
 
     if filter_invalid_redshift:
-
         if redshift_col is None:
-            raise ValueError("Redshift col name should be provided to apply cuts")
+            raise ValueError(
+                "Redshift col name should be provided to apply cuts"
+            )
 
         if redshift_col in metadata.columns:
             col_mask = metadata[redshift_col] != redshift_sentinel
             metadata = metadata[col_mask].reset_index(drop=True)
             n_removed = len(col_mask) - len(metadata)
             if n_removed > 0:
-                print(f"Filtered {n_removed} galaxies with invalid redshift (sentinel={redshift_sentinel})")
+                print(
+                    f"Filtered {n_removed} galaxies with invalid redshift (sentinel={redshift_sentinel})"
+                )
                 print(f"Remaining: {len(metadata)} galaxies")
         else:
-            raise ValueError(f"Warning: Redshift column '{redshift_col}' not found in metadata. Skipping redshift filtering.")
+            raise ValueError(
+                f"Warning: Redshift column '{redshift_col}' not found in metadata. Skipping redshift filtering."
+            )
 
     def make_generator(rows, images_path):
         def generator():
@@ -162,6 +170,7 @@ def load_fits_dataset(
                     **row.to_dict(),
                 }
                 yield result
+
         return generator
 
     gen = make_generator(metadata, images_path)
@@ -185,10 +194,13 @@ def make_loaders(
     image_norm_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
     return_aux_data: bool = True,
     condition_cols: Optional[list] = None,
-    conditional_norm_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+    conditional_norm_fn: Optional[
+        Callable[[torch.Tensor], torch.Tensor]
+    ] = None,
     shuffle: bool = True,
     split_datasets: Optional[tuple] = None,
     return_splits: bool = False,
+    invert_mask: bool = False,
 ):
     """Build train/val/test DataLoaders from a raw dataset.
 
@@ -227,6 +239,10 @@ def make_loaders(
     split_datasets: Optional tuple of (train_ds, val_ds, test_ds) from a previous call.
         If provided, uses these splits instead of creating new ones.
     return_splits: If True, return the split datasets tuple for reuse. Default False.
+    invert_mask: If True, flip the per-pixel mask (``1 - mask``) before
+        emitting it. Set this when the source survey writes
+        ``1 = bad pixel`` rather than the ``1 = valid pixel`` convention
+        the trainers assume. Default False.
 
     Returns:
     --------
@@ -251,6 +267,7 @@ def make_loaders(
         return_aux_data=return_aux_data,
         condition_cols=condition_cols or [],
         conditional_norm_fn=conditional_norm_fn,
+        invert_mask=invert_mask,
     )
 
     # Split dataset using random_split or reuse existing split
@@ -266,7 +283,7 @@ def make_loaders(
         train_ds, val_ds, test_ds = random_split(
             full_dataset,
             [train_ratio, val_ratio, test_ratio],
-            generator=torch.Generator().manual_seed(random_seed)
+            generator=torch.Generator().manual_seed(random_seed),
         )
 
     # Create dataloaders
@@ -276,8 +293,12 @@ def make_loaders(
         shuffle=shuffle,
         num_workers=num_workers,
         pin_memory=True,
-        persistent_workers=True if num_workers > 0 else False,  # Reuse worker processes across epochs
-        prefetch_factor=num_workers * 4 if num_workers > 0 else None,  # Prefetch batches
+        persistent_workers=True
+        if num_workers > 0
+        else False,  # Reuse worker processes across epochs
+        prefetch_factor=num_workers * 4
+        if num_workers > 0
+        else None,  # Prefetch batches
     )
     val_loader = DataLoader(
         val_ds,
@@ -305,6 +326,11 @@ def make_loaders(
         test_loader = None
 
     if return_splits:
-        return train_loader, val_loader, test_loader, (train_ds, val_ds, test_ds)
+        return (
+            train_loader,
+            val_loader,
+            test_loader,
+            (train_ds, val_ds, test_ds),
+        )
     else:
         return train_loader, val_loader, test_loader
