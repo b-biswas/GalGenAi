@@ -269,6 +269,9 @@ def make_loaders(
             "Use get_conditional_norm_fn() to create it."
         )
 
+    # Determine if pin_memory should be used (only supported on CUDA)
+    use_pin_memory = torch.cuda.is_available()
+
     # Create HSCDataset wrapper for the full dataset
     full_dataset = HSCDataset(
         dataset_raw,
@@ -301,7 +304,7 @@ def make_loaders(
         batch_size=batch_size,
         shuffle=shuffle,
         num_workers=num_workers,
-        pin_memory=True,
+        pin_memory=use_pin_memory,
         persistent_workers=True if num_workers > 0 else False,  # Reuse worker processes across epochs
         prefetch_factor=num_workers * 4 if num_workers > 0 else None,  # Prefetch batches
     )
@@ -310,7 +313,7 @@ def make_loaders(
         batch_size=batch_size,
         shuffle=False,  # Validation is never shuffled
         num_workers=num_workers,
-        pin_memory=True,
+        pin_memory=use_pin_memory,
         persistent_workers=True if num_workers > 0 else False,
         prefetch_factor=num_workers * 4 if num_workers > 0 else None,
     )
@@ -323,7 +326,7 @@ def make_loaders(
             batch_size=batch_size,
             shuffle=False,  # Test is never shuffled
             num_workers=num_workers,
-            pin_memory=True,
+            pin_memory=use_pin_memory,
             persistent_workers=True if num_workers > 0 else False,
             prefetch_factor=num_workers * 4 if num_workers > 0 else None,
         )
