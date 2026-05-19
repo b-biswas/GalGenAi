@@ -85,6 +85,9 @@ def load_fits_dataset(
                 filter_invalid_mags=filter_invalid_mags,
                 mag_sentinel=mag_sentinel,
                 mag_cols=mag_cols,
+                filter_invalid_redshift=filter_invalid_redshift,
+                redshift_sentinel=redshift_sentinel,
+                redshift_col=redshift_col,
             )
         return result
 
