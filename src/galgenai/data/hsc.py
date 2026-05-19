@@ -66,7 +66,8 @@ class HSCDataset(torch.utils.data.Dataset):
         ]
 
     def __getitem__(self, idx):
-        image_data = self.dataset[idx]["image"]
+        sample = self.dataset[idx]
+        image_data = sample["image"]
 
         # Extract and crop flux
         flux = self.crop(image_data["flux"])
@@ -79,7 +80,6 @@ class HSCDataset(torch.utils.data.Dataset):
         if self.return_aux_data:
             # Extract and crop inverse variance
             ivar = self.crop(image_data["ivar"])
-            ivar_normalized = self.normalize(ivar**(-0.5)) ** (-2)
 
             # Extract and crop mask
             mask = image_data["mask"]
@@ -87,12 +87,12 @@ class HSCDataset(torch.utils.data.Dataset):
                 mask = torch.as_tensor(mask, dtype=torch.float32)
             mask = self.crop(mask)
 
-            result.extend([ivar_normalized, mask])
+            result.extend([ivar, mask])
 
         # Add conditioning variables if requested
         if self.condition_cols:
             cond = torch.tensor(
-                [float(self.dataset[idx][c]) for c in self.condition_cols], dtype=torch.float32
+                [float(sample[c]) for c in self.condition_cols], dtype=torch.float32
             )
 
             # Normalize conditioning if function provided
