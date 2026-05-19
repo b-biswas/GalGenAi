@@ -188,6 +188,13 @@ def load_fits_dataset(
                 # Load raw data
                 flux = hdul["IMAGE"].data.astype("float32")
 
+                # Extract band names from FITS header
+                n_bands = flux.shape[0]
+                bands = [
+                    hdul["IMAGE"].header.get(f"BAND{i}", f"band{i}")
+                    for i in range(n_bands)
+                ]
+
                 if "IVAR" in hdul:
                     ivar = hdul["IVAR"].data.astype("float32")
                 else:
@@ -209,6 +216,7 @@ def load_fits_dataset(
                     "flux": flux,
                     "ivar": ivar,
                     "mask": mask,
+                    "band": bands,
                 }
             }
 
