@@ -22,6 +22,7 @@ def load_fits_dataset(
     filter_invalid_redshift=True,
     redshift_sentinel=-99.0,
     redshift_col=None,
+    nx=None,
 ):
     """
     Load a FITS galaxy dataset produced by generate_fits_dataset.py.
@@ -64,6 +65,9 @@ def load_fits_dataset(
         Sentinel value indicating missing redshift (default: -99.0).
     redshift_col : str
         Name of the redshift column in metadata. Required if filter_invalid_redshift is True.
+    nx : int or None
+        Optional crop size. If provided, images will be center-cropped to nx x nx.
+        If None, images are loaded at their original size. Default None.
 
     Returns:
     --------
@@ -88,6 +92,7 @@ def load_fits_dataset(
                 filter_invalid_redshift=filter_invalid_redshift,
                 redshift_sentinel=redshift_sentinel,
                 redshift_col=redshift_col,
+                nx=nx,
             )
         return result
 
@@ -136,7 +141,11 @@ def load_fits_dataset(
 
     # Check for Arrow cache (memory-mappable, avoids reopening FITS files)
     from datasets import load_from_disk
+
+    # Cache path includes crop size
     cache_suffix = ""
+    if nx is not None:
+        cache_suffix += f"_nx{nx}"
 
     cache_name = f"arrow_cache{cache_suffix}" if cache_suffix else "arrow_cache_raw"
     cache_path = data_dir / cache_name
@@ -148,9 +157,27 @@ def load_fits_dataset(
         print(f"Arrow cache not found. Loading {len(metadata):,} FITS files...")
         print("This ONE-TIME operation will take a few minutes.")
 
+        if nx is not None:
+            print(f"Images will be center-cropped to {nx}x{nx} during caching.")
+        else:
+            print("Images will be cached at their original size.")
+
         from tqdm import tqdm
 
         n_total = len(metadata)
+
+        # Get original image size from first FITS file
+        first_row = metadata.iloc[0]
+        with fits.open(images_path / first_row["filename"]) as hdul:
+            orig_shape = hdul["IMAGE"].data.shape
+            og_h, og_w = orig_shape[1], orig_shape[2]
+
+        if nx is not None:
+            # Calculate crop indices
+            og_nx2, og_ny2 = og_h // 2, og_w // 2
+            nx2 = nx // 2
+            print(f"  - Original size: {og_h}x{og_w}, cropped to: {nx}x{nx}")
+
         # Process all samples in ONE pass (no concatenation = no fragmentation)
         print(f"Processing {n_total:,} samples...")
         all_samples = []
@@ -170,6 +197,12 @@ def load_fits_dataset(
                     mask = hdul["MASK"].data.astype(np.int32)
                 else:
                     mask = np.zeros(flux.shape, dtype=np.int32)
+
+            # Crop to target size if nx is provided
+            if nx is not None:
+                flux = flux[:, og_nx2-nx2:og_nx2+nx2, og_ny2-nx2:og_ny2+nx2]
+                ivar = ivar[:, og_nx2-nx2:og_nx2+nx2, og_ny2-nx2:og_ny2+nx2]
+                mask = mask[:, og_nx2-nx2:og_nx2+nx2, og_ny2-nx2:og_ny2+nx2]
 
             sample = {
                 "image":{
