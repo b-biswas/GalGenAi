@@ -230,8 +230,6 @@ def make_loaders(
     condition_cols: Optional[list] = None,
     conditional_norm_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
     shuffle: bool = True,
-    split_datasets: Optional[tuple] = None,
-    return_splits: bool = False,
 ):
     """Build train/val/test DataLoaders from a raw dataset.
 
@@ -267,17 +265,11 @@ def make_loaders(
         Create externally using get_conditional_norm_fn() and pass here.
         Required if condition_cols is provided. [see normalization.py]
     shuffle: Whether to shuffle training data. Default True.
-    split_datasets: Optional tuple of (train_ds, val_ds, test_ds) from a previous call.
-        If provided, uses these splits instead of creating new ones.
-    return_splits: If True, return the split datasets tuple for reuse. Default False.
 
     Returns:
     --------
-    If return_splits=False: (train_loader, val_loader, test_loader)
+    (train_loader, val_loader, test_loader)
         where test_loader is None if train_ratio + val_ratio == 1.0
-    If return_splits=True: (train_loader, val_loader, test_loader, split_datasets)
-        where split_datasets is a tuple (train_ds, val_ds, test_ds) that can be
-        passed to subsequent calls to reuse the same split with different normalization.
     """
     # Validate conditioning parameters
     if condition_cols is not None and conditional_norm_fn is None:
@@ -299,21 +291,13 @@ def make_loaders(
         conditional_norm_fn=conditional_norm_fn,
     )
 
-    # Split dataset using random_split or reuse existing split
-    if split_datasets is not None:
-        # Reuse existing split by extracting indices and creating new Subsets
-        old_train, old_val, old_test = split_datasets
-        train_ds = torch.utils.data.Subset(full_dataset, old_train.indices)
-        val_ds = torch.utils.data.Subset(full_dataset, old_val.indices)
-        test_ds = torch.utils.data.Subset(full_dataset, old_test.indices)
-    else:
-        # Create new split
-        test_ratio = 1.0 - train_ratio - val_ratio
-        train_ds, val_ds, test_ds = random_split(
-            full_dataset,
-            [train_ratio, val_ratio, test_ratio],
-            generator=torch.Generator().manual_seed(random_seed)
-        )
+    # Split dataset using random_split
+    test_ratio = 1.0 - train_ratio - val_ratio
+    train_ds, val_ds, test_ds = random_split(
+        full_dataset,
+        [train_ratio, val_ratio, test_ratio],
+        generator=torch.Generator().manual_seed(random_seed)
+    )
 
     # Create dataloaders
     train_loader = DataLoader(
@@ -350,7 +334,4 @@ def make_loaders(
     else:
         test_loader = None
 
-    if return_splits:
-        return train_loader, val_loader, test_loader, (train_ds, val_ds, test_ds)
-    else:
-        return train_loader, val_loader, test_loader
+    return train_loader, val_loader, test_loader
