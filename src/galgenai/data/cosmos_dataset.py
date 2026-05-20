@@ -22,6 +22,7 @@ def load_fits_dataset(
     filter_invalid_redshift=True,
     redshift_sentinel=-99.0,
     redshift_col=None,
+    nx=None,
 ):
     """
     Load a FITS galaxy dataset produced by generate_fits_dataset.py.
@@ -64,6 +65,9 @@ def load_fits_dataset(
         Sentinel value indicating missing redshift (default: -99.0).
     redshift_col : str
         Name of the redshift column in metadata. Required if filter_invalid_redshift is True.
+    nx : int or None
+        Optional crop size. If provided, images will be center-cropped to nx x nx.
+        If None, images are loaded at their original size. Default None.
 
     Returns:
     --------
@@ -85,6 +89,10 @@ def load_fits_dataset(
                 filter_invalid_mags=filter_invalid_mags,
                 mag_sentinel=mag_sentinel,
                 mag_cols=mag_cols,
+                filter_invalid_redshift=filter_invalid_redshift,
+                redshift_sentinel=redshift_sentinel,
+                redshift_col=redshift_col,
+                nx=nx,
             )
         return result
 
@@ -131,41 +139,100 @@ def load_fits_dataset(
         else:
             raise ValueError(f"Warning: Redshift column '{redshift_col}' not found in metadata. Skipping redshift filtering.")
 
-    def make_generator(rows, images_path):
-        def generator():
-            for _, row in rows.iterrows():
-                with fits.open(images_path / row["filename"]) as hdul:
-                    image = hdul["IMAGE"].data.astype("float32")
-                    n_bands = image.shape[0]
-                    bands = [
-                        hdul["IMAGE"].header.get(f"BAND{i}", f"band{i}")
-                        for i in range(n_bands)
-                    ]
+    # Check for Arrow cache (memory-mappable, avoids reopening FITS files)
+    from datasets import load_from_disk
 
-                    if "IVAR" in hdul:
-                        ivar = hdul["IVAR"].data.astype("float32")
-                    else:
-                        ivar = np.ones_like(image)
+    # Cache path includes crop size
+    cache_suffix = ""
+    if nx is not None:
+        cache_suffix += f"_nx{nx}"
 
-                    if "MASK" in hdul:
-                        mask = hdul["MASK"].data.astype(np.int32)
-                    else:
-                        mask = np.zeros(image.shape, dtype=np.int32)
+    cache_name = f"arrow_cache{cache_suffix}" if cache_suffix else "arrow_cache_raw"
+    cache_path = data_dir / cache_name
 
-                result = {
-                    "image": {
-                        "flux": image,
-                        "ivar": ivar,
-                        "mask": mask,
-                        "band": bands,
-                    },
-                    **row.to_dict(),
+    if cache_path.exists():
+        print(f"Loading from Arrow cache: {cache_path}")
+        dataset = load_from_disk(str(cache_path))
+    else:
+        print(f"Arrow cache not found. Loading {len(metadata):,} FITS files...")
+        print("This ONE-TIME operation will take a few minutes.")
+
+        if nx is not None:
+            print(f"Images will be center-cropped to {nx}x{nx} during caching.")
+        else:
+            print("Images will be cached at their original size.")
+
+        from tqdm import tqdm
+
+        n_total = len(metadata)
+
+        # Get original image size and band names from first FITS file
+        first_row = metadata.iloc[0]
+        with fits.open(images_path / first_row["filename"]) as hdul:
+            orig_shape = hdul["IMAGE"].data.shape
+            og_h, og_w = orig_shape[1], orig_shape[2]
+
+            # Extract band names from FITS header (same for all images)
+            n_bands = orig_shape[0]
+            bands = [
+                hdul["IMAGE"].header.get(f"BAND{i}", f"band{i}")
+                for i in range(n_bands)
+            ]
+
+        if nx is not None:
+            # Calculate crop indices
+            og_nx2, og_ny2 = og_h // 2, og_w // 2
+            nx2 = nx // 2
+            print(f"  - Original size: {og_h}x{og_w}, cropped to: {nx}x{nx}")
+
+        # Process all samples in ONE pass (no concatenation = no fragmentation)
+        print(f"Processing {n_total:,} samples...")
+        all_samples = []
+
+        for i in tqdm(range(n_total), desc="Loading FITS files"):
+            row = metadata.iloc[i]
+            with fits.open(images_path / row["filename"]) as hdul:
+                # Load raw data
+                flux = hdul["IMAGE"].data.astype("float32")
+
+                if "IVAR" in hdul:
+                    ivar = hdul["IVAR"].data.astype("float32")
+                else:
+                    ivar = np.ones_like(flux)
+
+                if "MASK" in hdul:
+                    mask = hdul["MASK"].data.astype(np.int32)
+                else:
+                    mask = np.zeros(flux.shape, dtype=np.int32)
+
+            # Crop to target size if nx is provided
+            if nx is not None:
+                flux = flux[:, og_nx2-nx2:og_nx2+nx2, og_ny2-nx2:og_ny2+nx2]
+                ivar = ivar[:, og_nx2-nx2:og_nx2+nx2, og_ny2-nx2:og_ny2+nx2]
+                mask = mask[:, og_nx2-nx2:og_nx2+nx2, og_ny2-nx2:og_ny2+nx2]
+
+            sample = {
+                "image":{
+                    "flux": flux,
+                    "ivar": ivar,
+                    "mask": mask,
+                    "band": bands,
                 }
-                yield result
-        return generator
+            }
 
-    gen = make_generator(metadata, images_path)
-    dataset = Dataset.from_generator(gen)
+            sample.update(row.to_dict())
+
+            all_samples.append(sample)
+
+        print(f"Creating Arrow cache...")
+        dataset = Dataset.from_list(all_samples)
+        del all_samples
+
+        # Save to disk with sharding for optimal memory mapping
+        print(f"Saving to: {cache_path}")
+        dataset.save_to_disk(str(cache_path))
+        cache_size_mb = sum(f.stat().st_size for f in cache_path.rglob("*") if f.is_file()) / 1e6
+        print(f"Cached! ({cache_size_mb:.1f} MB) Future loads will be instant.")
 
     # Apply format if specified
     if format is not None:
@@ -243,6 +310,9 @@ def make_loaders(
             "Use get_conditional_norm_fn() to create it."
         )
 
+    # Determine if pin_memory should be used (only supported on CUDA)
+    use_pin_memory = torch.cuda.is_available()
+
     # Create HSCDataset wrapper for the full dataset
     full_dataset = HSCDataset(
         dataset_raw,
@@ -275,7 +345,7 @@ def make_loaders(
         batch_size=batch_size,
         shuffle=shuffle,
         num_workers=num_workers,
-        pin_memory=True,
+        pin_memory=use_pin_memory,
         persistent_workers=True if num_workers > 0 else False,  # Reuse worker processes across epochs
         prefetch_factor=num_workers * 4 if num_workers > 0 else None,  # Prefetch batches
     )
@@ -284,7 +354,7 @@ def make_loaders(
         batch_size=batch_size,
         shuffle=False,  # Validation is never shuffled
         num_workers=num_workers,
-        pin_memory=True,
+        pin_memory=use_pin_memory,
         persistent_workers=True if num_workers > 0 else False,
         prefetch_factor=num_workers * 4 if num_workers > 0 else None,
     )
@@ -297,7 +367,7 @@ def make_loaders(
             batch_size=batch_size,
             shuffle=False,  # Test is never shuffled
             num_workers=num_workers,
-            pin_memory=True,
+            pin_memory=use_pin_memory,
             persistent_workers=True if num_workers > 0 else False,
             prefetch_factor=num_workers * 4 if num_workers > 0 else None,
         )

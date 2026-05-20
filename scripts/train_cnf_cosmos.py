@@ -146,6 +146,7 @@ def main():
         redshift_col=redshift_col,
         mag_sentinel=cosmos_cfg.get("mag_sentinel", 999.0),
         redshift_sentinel=cosmos_cfg.get("redshift_sentinel", -99.0),
+        nx=nx, # Crop when creating cached dataset
     )
 
     n_total = len(dataset_raw)

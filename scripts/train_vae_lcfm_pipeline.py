@@ -185,6 +185,7 @@ if __name__ == '__main__':
             filter_invalid_redshift=True,
             redshift_sentinel=dataset_cfg["redshift_sentinel"],
             redshift_col=redshift_col,
+            nx=nx,  # Pre-crop images during caching for better memory efficiency
         )
         print(f"Loaded COSMOS dataset from: {data_path}")
     
