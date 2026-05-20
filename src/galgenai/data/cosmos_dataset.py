@@ -43,10 +43,8 @@ def load_fits_dataset(
     -----------
     data_dir : str or Path
         Root directory of the dataset (contains ``images/`` and metadata CSV).
-    metadata_file : str or dict
-        If str: Name of a single metadata CSV file. Default "metadata.csv".
-        If dict: Dictionary mapping split names to metadata filenames.
-                 Returns a dictionary of datasets.
+    metadata_file : str
+        Name of the metadata CSV file. Default "metadata.csv".
     format : str
         Output format for arrays. Options: "torch" (default), "numpy", "tensorflow",
         or None (Python lists). Default "torch".
@@ -71,32 +69,10 @@ def load_fits_dataset(
 
     Returns:
     --------
-    datasets.Dataset or dict
+    datasets.Dataset
         HuggingFace Dataset with PyTorch tensors (default format="torch").
-        If metadata_file is str: Single dataset loading from the specified file.
-        If metadata_file is dict: Dictionary mapping split names to datasets.
     """
     data_dir = Path(data_dir)
-
-    # Handle dictionary of metadata files: if they are splited into train, test, val
-    if isinstance(metadata_file, dict):
-        result = {}
-        for split_name, meta_file in metadata_file.items():
-            result[split_name] = load_fits_dataset(
-                data_dir,
-                metadata_file=meta_file,
-                format=format,
-                filter_invalid_mags=filter_invalid_mags,
-                mag_sentinel=mag_sentinel,
-                mag_cols=mag_cols,
-                filter_invalid_redshift=filter_invalid_redshift,
-                redshift_sentinel=redshift_sentinel,
-                redshift_col=redshift_col,
-                nx=nx,
-            )
-        return result
-
-    # Single metadata file
     images_path = data_dir / "images"
     metadata = pd.read_csv(data_dir / metadata_file)
 
