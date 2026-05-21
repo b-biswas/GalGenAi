@@ -5,16 +5,16 @@ repos:
       - id: nbstripout
         args:
               - --keep-output
-  - repo: https://github.com/nbQA-dev/nbQA
-    rev: 1.9.1
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
     hooks:
-    - id: nbqa-black
-      additional_dependencies: [black==24.10.0]
-    - id: nbqa-pyupgrade
-      additional_dependencies: [pyupgrade==3.21.2]
-    - id: nbqa-isort
-      additional_dependencies: [isort==8.0.1]
-      args: [--profile=black]
-    - id: nbqa-flake8
-      additional_dependencies: [flake8==7.1.1]
-      args: ['--ignore=E501,E402,E203,E731,W503']
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.3
+    hooks:
+      - id: ruff-check
+        args: ["--fix"]
+      - id: ruff-format
