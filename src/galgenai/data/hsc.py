@@ -7,28 +7,26 @@ from datasets import Dataset
 
 
 class HSCDataset(torch.utils.data.Dataset):
-    """Unified dataset for HSC/COSMOS galaxy images with optional conditioning.
+    """Unified dataset for galaxy images.
+
+    For HSC/COSMOS with optional conditioning.
 
     Returns different data based on parameters:
-    - return_aux_data=True, condition_cols=None: (flux, ivar, mask)
-    - return_aux_data=True, condition_cols=[...]: (flux, ivar, mask, condition)
-    - return_aux_data=False, condition_cols=None: flux
-    - return_aux_data=False, condition_cols=[...]: (flux, condition)
+    - return_aux_data=True: (flux, ivar, mask)
+    - return_aux_data=False: flux
+    - With conditioning: appends (condition)
 
-    Mask convention: downstream losses (VAE/LCFM/CFM weighted MSE) treat the
-    emitted mask as ``1 = valid, 0 = invalid``. Set ``invert_mask=True`` when
-    the source survey writes the opposite convention (``1 = bad pixel flag``).
+    Mask convention: ``1 = valid, 0 = invalid``.
 
     Args:
-        hf_dataset: HuggingFace Dataset with 'image' column containing flux, ivar, mask, band
-        nx: Side length of center-cropped output patch
-        image_norm_fn: Optional image normalization function (C, H, W) -> (C, H, W)
-        return_aux_data: If True, return auxiliary data (ivar, mask). Default True.
-        condition_cols: Optional list of column names for conditioning variables
-        conditional_norm_fn: Optional function to normalize conditioning variables.
-            Create using get_conditional_norm_fn() and pass here.
-        invert_mask: If True, flip the per-pixel mask (``1 - mask``) before
-            emitting it. Default False.
+        hf_dataset: HuggingFace Dataset with
+            'image' column
+        nx: Side length of center-cropped patch
+        image_norm_fn: Optional normalization
+        return_aux_data: Return auxiliary data
+        condition_cols: Optional column names
+        conditional_norm_fn: Optional function
+        invert_mask: If True, flip mask
     """
 
     def __init__(
@@ -38,7 +36,9 @@ class HSCDataset(torch.utils.data.Dataset):
         image_norm_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
         return_aux_data: bool = True,
         condition_cols: Optional[list] = None,
-        conditional_norm_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+        conditional_norm_fn: Optional[
+            Callable[[torch.Tensor], torch.Tensor]
+        ] = None,
         invert_mask: bool = False,
     ):
         self.dataset = hf_dataset
@@ -102,7 +102,8 @@ class HSCDataset(torch.utils.data.Dataset):
         # Add conditioning variables if requested
         if self.condition_cols:
             cond = torch.tensor(
-                [float(sample[c]) for c in self.condition_cols], dtype=torch.float32
+                [float(sample[c]) for c in self.condition_cols],
+                dtype=torch.float32,
             )
 
             # Normalize conditioning if function provided
@@ -131,7 +132,12 @@ def get_dataset_and_loaders(
 
     n_gals = len(dataset_raw)
 
-    dataset = HSCDataset(dataset_raw, nx=nx, image_norm_fn=image_norm_fn, invert_mask=invert_mask)
+    dataset = HSCDataset(
+        dataset_raw,
+        nx=nx,
+        image_norm_fn=image_norm_fn,
+        invert_mask=invert_mask,
+    )
     n_bands, n_x, n_y = dataset[0][0].shape  # First element of tuple is flux
     print(f"Images dimension: {n_bands}*{n_x}*{n_y} ({n_gals} galaxies)")
 

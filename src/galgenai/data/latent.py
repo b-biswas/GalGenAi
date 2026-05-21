@@ -10,22 +10,27 @@ from galgenai.models import VAEEncoder
 
 
 class LatentDataset(Dataset):
-    """Dataset for latent representations that samples from the VAE posterior.
+    """Dataset for latent representations.
 
-    Loads the posterior mean (mu) and log-variance (logvar) from a .pt cache file
-    into memory and samples from N(mu, sigma^2) when accessed. This preserves the
-    stochastic nature of the latent representation during CNF training.
+    Samples from VAE posterior. Loads mu and
+    logvar from .pt cache file into memory and
+    samples from N(mu, sigma^2) when accessed.
+
+    Preserves stochasticity during CNF training.
 
     Parameters:
     -----------
-    cache_path: Path to .pt cache file containing mu, logvar, and conditions tensors.
+    cache_path: Path to .pt cache with mu, logvar,
+        and conditions tensors.
 
     """
 
     def __init__(self, cache_path: str | Path):
         self.cache_path = Path(cache_path)
         # Load cached latents into memory
-        data = torch.load(self.cache_path, map_location="cpu", weights_only=True)
+        data = torch.load(
+            self.cache_path, map_location="cpu", weights_only=True
+        )
         self.mu = data["mu"]
         self.logvar = data["logvar"]
         self.conditions = data["conditions"]
@@ -60,33 +65,34 @@ def precompute_latents(
     batch_size: Optional[int] = None,
     shuffle: bool = True,
 ) -> LatentDataset | DataLoader:
-    """Encode all images in ``loader`` and cache to .pt file.
+    """Encode all images and cache to .pt file.
 
-    The LatentDataset samples from N(mu, sigma^2) each time it's accessed,
+    LatentDataset samples from N(mu, sigma^2),
     preserving stochasticity.
 
-    Always computes latents and writes to cache, overwriting any existing file.
+    Always computes latents and writes to cache,
+    overwriting any existing file.
 
     Parameters:
     -----------
     encoder: Frozen VAE encoder in eval mode.
-    loader: DataLoader returning batches. Supported formats:
-        - (flux, condition): 2-tuple from return_aux_data=False with conditioning
-        - (flux, ivar, mask, condition): 4-tuple from return_aux_data=True with conditioning
-    device: Device to run the encoder on.
-    cache_path: Path to .pt cache file. Will be overwritten if it exists.
-    return_dataloader: If True, return a DataLoader instead of LatentDataset.
-    batch_size: Batch size for the returned DataLoader. If None, uses the batch size
-        from the input loader. Only used when return_dataloader=True.
-    shuffle: Whether to shuffle the DataLoader. Only used when return_dataloader=True.
-        Default True.
+    loader: DataLoader returning batches.
+        Supports: (flux, condition) or
+        (flux, ivar, mask, condition) tuples
+    device: Device to run encoder on.
+    cache_path: Path to .pt cache file.
+        Overwritten if exists.
+    return_dataloader: If True, return
+        DataLoader instead of LatentDataset.
+    batch_size: Batch size for returned
+        DataLoader. If None, uses input loader.
+    shuffle: Shuffle the DataLoader
+        (default True).
 
     Returns:
     --------
-    If return_dataloader=False: LatentDataset 
-        where mu, logvar, and conditions each having shape (N, latent_dim).
-    If return_dataloader=True: DataLoader 
-        wrapping the LatentDataset.
+    If return_dataloader=False: LatentDataset
+    If return_dataloader=True: DataLoader
     """
     cache_path = Path(cache_path)
     cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -126,7 +132,7 @@ def precompute_latents(
         },
         cache_path,
     )
-    print(f"Cache saved successfully")
+    print("Cache saved successfully")
 
     # Create dataset from cache
     dataset = LatentDataset(cache_path=cache_path)

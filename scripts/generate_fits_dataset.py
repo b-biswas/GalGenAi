@@ -29,8 +29,9 @@ def main():
     except KeyError as e:
         raise ValueError(
             f"Missing required config value: {e}. "
-            "Please ensure all required values are present in the config file under 'cosmos' section."
-        )
+            "Please ensure all required values are present in the"
+            " config file under 'cosmos' section."
+        ) from e
 
     # Create output directory and save config
     output_path = Path(output_dir)
@@ -58,9 +59,14 @@ def main():
         yaml.dump(config_to_save, f, default_flow_style=False, sort_keys=False)
     print(f"\nSaved generation config to: {config_save_path}")
 
-    catalog = COSMOSWebCatalog(catalog_path=catalog_path, required_columns_only=True)
+    catalog = COSMOSWebCatalog(
+        catalog_path=catalog_path, required_columns_only=True
+    )
 
-    print(f"\nInitializing GalaxySim (image_size={image_size}, max_fft_size={max_fft_size})...")
+    print(
+        f"\nInitializing GalaxySim (image_size={image_size},"
+        f" max_fft_size={max_fft_size})..."
+    )
     sim = GalaxySim(
         catalog=catalog,
         survey_name="HSC",
@@ -85,5 +91,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

@@ -32,7 +32,8 @@ class ConditionalNormalizingFlow(nn.Module):
         latent_dim : int
             Dimension of VAE latent space (default: 16)
         condition_dim : int
-            Dimension of conditioning (default: 6 for redshift + 5 photometry)
+            Dimension of conditioning (default: 6 for redshift + 5
+            photometry)
         num_blocks : int
             Number of coupling blocks (default: 8)
         hidden_dim : int
@@ -121,7 +122,9 @@ class ConditionalNormalizingFlow(nn.Module):
 
         return z_current, log_det_total
 
-    def log_prob(self, z: torch.Tensor, condition: torch.Tensor) -> torch.Tensor:
+    def log_prob(
+        self, z: torch.Tensor, condition: torch.Tensor
+    ) -> torch.Tensor:
         """Compute log probability log p(z|c).
 
         Uses the change of variables formula:
