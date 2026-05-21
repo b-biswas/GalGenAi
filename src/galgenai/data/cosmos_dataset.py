@@ -25,71 +25,65 @@ def load_fits_dataset(
     nx=None,
 ):
     """
-    Load a FITS galaxy dataset produced by
-    generate_fits_dataset.py.
+    Load a FITS galaxy dataset produced by generate_fits_dataset.py.
 
-    All galaxies are stored together under
-    ``data_dir/images/`` with metadata CSV file(s).
-    The returned dataset is then split in make_loaders().
+    All galaxies are stored together under ``data_dir/images/`` with
+    metadata CSV file(s). The returned dataset is then split in
+    make_loaders().
 
-    The returned dataset has one column image (nested
-    dict with keys: flux, ivar, mask, band) plus all
-    metadata columns from the CSV. This layout matches
-    the HSC dataset format so that hsc.HSCDataset can
-    be used directly.
+    The returned dataset has one column image (nested dict with keys:
+    flux, ivar, mask, band) plus all metadata columns from the CSV. This
+    layout matches the HSC dataset format so that hsc.HSCDataset can be
+    used directly.
 
-    If IVAR is absent from a FITS file, a ones array is
-    used (uniform weighting). If MASK is absent, a zeros
-    array is used (no masking).
+    If IVAR is absent from a FITS file, a ones array is used
+    (uniform weighting). If MASK is absent, a zeros array is used
+    (no masking).
 
     Parameters:
     -----------
     data_dir : str or Path
-        Root directory of the dataset (contains
-        ``images/`` and metadata CSV).
+        Root directory of the dataset (contains ``images/`` and metadata
+        CSV).
     metadata_file : str or dict
         If str: Name of a single metadata CSV file.
         Default "metadata.csv".
-        If dict: Dictionary mapping split names to
-        metadata filenames. Returns a dictionary of
-        datasets.
+        If dict: Dictionary mapping split names to metadata filenames.
+        Returns a dictionary of datasets.
     format : str
-        Output format for arrays. Options: "torch"
-        (default), "numpy", "tensorflow", or None
-        (Python lists). Default "torch".
+        Output format for arrays. Options: "torch" (default), "numpy",
+        "tensorflow", or None (Python lists). Default "torch".
     filter_invalid_mags : bool
-        If True, filter out galaxies where any magnitude
-        column equals the sentinel value. Default True.
+        If True, filter out galaxies where any magnitude column equals
+        the sentinel value. Default True.
     mag_sentinel : float
-        Sentinel value indicating missing magnitude
-        (default: 999.0). Rows with any magnitude
-        exactly equal to this value will be filtered out.
+        Sentinel value indicating missing magnitude (default: 999.0).
+        Rows with any magnitude exactly equal to this value will be
+        filtered out.
     mag_cols : list of str or None
-        List of magnitude column names to check
-        (e.g., ['mag_g', 'mag_r', 'mag_i']).
-        If None, auto-detects all columns starting with
-        'mag_'. Default None.
+        List of magnitude column names to check (e.g.,
+        ['mag_g', 'mag_r', 'mag_i']). If None, auto-detects all columns
+        starting with 'mag_'. Default None.
     filter_invalid_redshift : bool
-        If True, filter out galaxies where redshift
-        equals the sentinel value. Default True.
+        If True, filter out galaxies where redshift equals the sentinel
+        value. Default True.
     redshift_sentinel : float
-        Sentinel value indicating missing redshift
-        (default: -99.0).
+        Sentinel value indicating missing redshift (default: -99.0).
     redshift_col : str
-        Name of the redshift column in metadata.
-        Required if filter_invalid_redshift is True.
+        Name of the redshift column in metadata. Required if
+        filter_invalid_redshift is True.
     nx : int or None
-        Optional crop size. If provided, images will be
-        center-cropped to nx x nx. If None, images are
-        loaded at their original size. Default None.
+        Optional crop size. If provided, images will be center-cropped
+        to nx x nx. If None, images are loaded at their original size.
+        Default None.
 
     Returns:
     --------
     datasets.Dataset or dict
         HuggingFace Dataset with PyTorch tensors
         (default format="torch").
-        If metadata_file is str: Single dataset loading
-        from the specified file.
+        If metadata_file is str: Single dataset loading from the
+        specified file.
         If metadata_file is dict: Dictionary mapping
         split names to datasets.
     """

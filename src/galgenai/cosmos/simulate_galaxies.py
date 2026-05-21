@@ -136,12 +136,12 @@ def _process_chunk(
     ----------
     galaxy_rows_chunk : list of dict
     images_path : str
-        Directory where FITS files are written (passed as str
-        for pickling).
+        Directory where FITS files are written (passed as str for
+        pickling).
     filter_names : list of str
     sim_kwargs : dict
-        Keyword arguments forwarded to GalaxySim
-        (survey_name, image_size).
+        Keyword arguments forwarded to GalaxySim (survey_name,
+        image_size).
     worker_seed : int
         Per-worker random seed for independent RNG stream.
 
@@ -258,16 +258,15 @@ class GalaxySim:
         image_size : int, optional
             Size of simulated images in pixels (default: 53)
         random_seed : int, optional
-            Random seed for reproducibility. If None, uses
-            12345 (default: None)
+            Random seed for reproducibility. If None, uses 12345
+            (default: None)
         max_fft_size : int, optional
             Maximum FFT size for Galsim operations (default: 512)
         catalog_columns : dict, optional
             Mapping of parameter names to catalog column names
             (should include 'mag_cols' and 'snr' keys)
         snr_threshold : float, optional
-            Minimum SNR threshold for filtering galaxies
-            (default: 50)
+            Minimum SNR threshold for filtering galaxies (default: 50)
         """
         self.catalog = catalog
         self.survey = get_survey(survey_name=survey_name)
@@ -339,19 +338,19 @@ class GalaxySim:
         Parameters:
         -----------
         galaxy_params_filter : dict
-            Galaxy parameters with keys: 'mag', 'hlr',
-            'sersic_n', 'sersic_ratio', 'sersic_angle'
+            Galaxy parameters with keys: 'mag', 'hlr', 'sersic_n',
+            'sersic_ratio', 'sersic_angle'
         psf_params_filter : dict
-            PSF parameters with keys 'fwhm' (required) and
-            'beta' (for Moffat PSF)
+            PSF parameters with keys 'fwhm' (required) and 'beta' (for
+            Moffat PSF)
         filter_name : str
             Name of the filter band (e.g., 'g', 'r', 'i')
         psf_type : str, optional
             Type of PSF to use: 'moffat' or 'gaussian'
             (default: 'moffat')
         add_noise : str or None, optional
-            Type of noise: 'galaxy', 'background', 'all',
-            or None (default: None)
+            Type of noise: 'galaxy', 'background', 'all', or None
+            (default: None)
         galaxy_type : str, optional
             Type of galaxy profile: 'sersic' or 'bulge+disk'
             (default: 'sersic')
@@ -440,9 +439,9 @@ class GalaxySim:
         Parameters:
         -----------
         galaxy_params_multiband : dict
-            Dictionary with filter names as keys and
-            galaxy parameters as values. Each filter's
-            parameters must use standardized keys:
+            Dictionary with filter names as keys and galaxy parameters
+            as values. Each filter's parameters must use standardized
+            keys:
             - 'mag': magnitude in the band
             For sersic profiles:
             - 'hlr': half-light radius in arcsec
@@ -450,29 +449,28 @@ class GalaxySim:
             - 'sersic_ratio': axis ratio (b/a)
             - 'sersic_angle': position angle in degrees
         psf_params_multiband : dict
-            Dictionary with filter names as keys and PSF
-            parameters as values. Each filter's parameters
-            should contain 'fwhm' (required) and 'beta'
-            (for Moffat PSF).
+            Dictionary with filter names as keys and PSF parameters as
+            values. Each filter's parameters should contain 'fwhm'
+            (required) and 'beta' (for Moffat PSF).
         psf_type : str, optional
             Type of PSF to use: 'moffat' or 'gaussian'
             (default: 'moffat')
         add_noise : str or None, optional
-            Type of noise: 'galaxy', 'background', 'all',
-            or None (default: None)
+            Type of noise: 'galaxy', 'background', 'all', or None
+            (default: None)
         galaxy_type : str, optional
-            Type of galaxy profile: 'sersic' or
-            'bulge+disk' (default: 'sersic')
+            Type of galaxy profile: 'sersic' or 'bulge+disk'
+            (default: 'sersic')
         gsparams : galsim.GSParams, optional
             GSParams for FFT settings (default: None)
 
         Returns:
         --------
         tuple : (multi_band_image, multi_band_pixel_variance)
-            - multi_band_image: Dictionary of
-              galsim.Image objects keyed by filter name
-            - multi_band_pixel_variance: Dictionary of
-              variance arrays keyed by filter name
+            - multi_band_image: Dictionary of galsim.Image objects
+              keyed by filter name
+            - multi_band_pixel_variance: Dictionary of variance arrays
+              keyed by filter name
         """
         if add_noise is not None:
             if add_noise not in ["galaxy", "background", "all"]:
@@ -521,20 +519,19 @@ class GalaxySim:
         galaxy_row : astropy.table.Row
             Single row from catalog
         filter_names : list, optional
-            List of filter names to simulate. If None,
-            uses all available filters
+            List of filter names to simulate. If None, uses all
+            available filters
 
         Returns:
         --------
         tuple : (images_dict, pixel_variance_dict,
                  galaxy_params_multi_band)
-            - images_dict: Dictionary with filter names
-              as keys and image arrays as values
-            - pixel_variance_dict: Dictionary with
-              filter names as keys and variance arrays
-              as values
-            - galaxy_params_multi_band: Dictionary with
-              galaxy parameters for each filter
+            - images_dict: Dictionary with filter names as keys and
+              image arrays as values
+            - pixel_variance_dict: Dictionary with filter names as keys
+              and variance arrays as values
+            - galaxy_params_multi_band: Dictionary with galaxy
+              parameters for each filter
         """
         if filter_names is None:
             filter_names = self.survey.available_filters
@@ -592,8 +589,7 @@ class GalaxySim:
         """
         Filter galaxies with high SNR.
 
-        Uses self.snr_threshold and
-        self.catalog_columns['snr']
+        Uses self.snr_threshold and self.catalog_columns['snr']
 
         Returns:
         --------
@@ -633,22 +629,20 @@ class GalaxySim:
         Generate galaxy images and save as FITS.
 
         All galaxies are stored in output_dir/images/.
-        Train/validation/test split is applied at
-        runtime when loading the dataset (see
-        cosmos_dataset.load_fits_dataset).
+        Train/validation/test split is applied at runtime when loading
+        the dataset (see cosmos_dataset.load_fits_dataset).
 
-        When num_workers > 1, the catalog is divided
-        into num_workers chunks that are processed in
-        parallel via multiprocessing. Each worker
-        creates its own GalaxySim with independent seed.
+        When num_workers > 1, the catalog is divided into num_workers
+        chunks that are processed in parallel via multiprocessing. Each
+        worker creates its own GalaxySim with independent seed.
 
         Parameters
         ----------
         output_dir : str or Path
             Directory where to save the dataset
         filter_names : list of str, optional
-            List of filter names to process. If None,
-            uses all available filters
+            List of filter names to process. If None, uses all available
+            filters
         num_workers : int, optional
             Number of parallel workers (default: 1)
         filter_high_snr : bool, optional

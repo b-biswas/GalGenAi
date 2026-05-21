@@ -4,21 +4,35 @@ Compute and save normalization statistics.
 For galaxy datasets (COSMOS or HSC MMU).
 
 This script:
-1. Reads dataset path and condition columns
-2. Loads the entire dataset
-3. Computes image normalization statistics
-4. Computes conditional stats (COSMOS only)
-5. Saves all stats as YAML files
-6. Optionally updates config file
+1. Reads dataset path, crop size (nx), and condition columns from
+   config file
+2. Loads the entire dataset (COSMOS FITS or HSC MMU Arrow format)
+3. Computes image normalization statistics using min-max normalization:
+   - Linear: Direct min-max normalization on raw flux
+   - Arcsinh: Arcsinh stretch (per-band scale) + min-max normalization
+4. Computes conditional normalization statistics (min-max) - COSMOS only
+5. Saves all stats as YAML files (rounded to 2 decimal places)
+6. Optionally updates the config file with the computed statistics
 
-By default uses 2000 objects for statistics.
-Use --n-samples to modify this.
+By default uses a subset of 2000 objects to compute the statistics.
+--n-samples can be used to modify this.
 
-Config file parameters:
-  - cosmos.hf_dataset_path: Path to dataset
-  - training.nx: Crop size for images
-  - training.cnf.condition_cols: Conditioning
-    columns (COSMOS only)
+The script reads these parameters from the config file:
+- cosmos.hf_dataset_path: Path to dataset directory
+- training.nx: Crop size for images
+- training.cnf.condition_cols: List of condition columns (COSMOS only)
+
+Run with:
+# Minimal example:
+uv run python scripts/compute_norm_stats.py --dataset-type cosmos
+
+# COSMOS dataset:
+uv run python scripts/compute_norm_stats.py --dataset-type cosmos \
+        --n-samples 2000 --config-path ./my_config.yaml
+
+# HSC MMU dataset:
+uv run python scripts/compute_norm_stats.py --dataset-type hsc_mmu \
+        --config-path ./my_config.yaml
 """
 
 import argparse

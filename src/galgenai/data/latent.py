@@ -12,9 +12,8 @@ from galgenai.models import VAEEncoder
 class LatentDataset(Dataset):
     """Dataset for latent representations.
 
-    Samples from VAE posterior. Loads mu and
-    logvar from .pt cache file into memory and
-    samples from N(mu, sigma^2) when accessed.
+    Samples from VAE posterior. Loads mu and logvar from .pt cache file
+    into memory and samples from N(mu, sigma^2) when accessed.
 
     Preserves stochasticity during CNF training.
 
@@ -67,27 +66,23 @@ def precompute_latents(
 ) -> LatentDataset | DataLoader:
     """Encode all images and cache to .pt file.
 
-    LatentDataset samples from N(mu, sigma^2),
-    preserving stochasticity.
+    LatentDataset samples from N(mu, sigma^2), preserving stochasticity.
 
-    Always computes latents and writes to cache,
-    overwriting any existing file.
+    Always computes latents and writes to cache, overwriting any
+    existing file.
 
     Parameters:
     -----------
     encoder: Frozen VAE encoder in eval mode.
-    loader: DataLoader returning batches.
-        Supports: (flux, condition) or
+    loader: DataLoader returning batches. Supports: (flux, condition) or
         (flux, ivar, mask, condition) tuples
     device: Device to run encoder on.
-    cache_path: Path to .pt cache file.
-        Overwritten if exists.
-    return_dataloader: If True, return
-        DataLoader instead of LatentDataset.
-    batch_size: Batch size for returned
-        DataLoader. If None, uses input loader.
-    shuffle: Shuffle the DataLoader
-        (default True).
+    cache_path: Path to .pt cache file. Overwritten if exists.
+    return_dataloader: If True, return DataLoader instead of
+        LatentDataset.
+    batch_size: Batch size for returned DataLoader. If None, uses input
+        loader.
+    shuffle: Shuffle the DataLoader (default True).
 
     Returns:
     --------

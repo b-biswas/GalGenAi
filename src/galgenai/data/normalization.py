@@ -69,11 +69,11 @@ def compute_linear_norm_stats(
 
     Parameters:
     -----------
-    dataset: A torch Dataset whose items are image tensors
-        shape: (C, H, W) or ``(image, ...)`` tuples where
-        the first element is the image.
-    n_samples: Number of images to sample.
-        Default is set to None which uses the full dataset.
+    dataset: A torch Dataset whose items are image tensors shape:
+        (C, H, W) or ``(image, ...)`` tuples where the first element is
+        the image.
+    n_samples: Number of images to sample. Default is set to None which
+        uses the full dataset.
     seed: Random seed for reproducible sub-sampling
 
     Returns:
@@ -135,15 +135,15 @@ def compute_arcsinh_norm_stats(
     seed: int = 0,
     scale_quantile=0.95,
 ) -> ASinhNormStats:
-    """Estimate per-channel min, max, and scale from a
-    subset of the dataset.
+    """Estimate per-channel min, max, and scale from a subset of the
+    dataset.
 
-    The scale parameter is computed per-band as the mean
-    of the top `scale_quantile` percentile flux values for
-    that band to reduce the influence of background noise.
+    The scale parameter is computed per-band as the mean of the top
+    `scale_quantile` percentile flux values for that band to reduce the
+    influence of background noise.
 
-    Min and max are computed after the arcsinh stretch for
-    min-max normalization
+    Min and max are computed after the arcsinh stretch for min-max
+    normalization
     """
     n = len(dataset)
     rng = np.random.default_rng(seed)
@@ -245,10 +245,9 @@ def save_image_norm_stats(
 
     Parameters:
     -----------
-    stats: The normalization statistics to save
-        (LinearNormStats or ASinhNormStats).
-    save_path: Path where statistics will be saved
-        as a .yaml file.
+    stats: The normalization statistics to save (LinearNormStats or
+        ASinhNormStats).
+    save_path: Path where statistics will be saved as a .yaml file.
     """
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
@@ -309,26 +308,21 @@ def get_image_norm_fn(
     Parameters:
     -----------
     img_norm_type: Type of normalization. Options:
-        - "linear": Min-max normalization
-          (x - min) / (max - min)
-        - "arcsinh": Arcsinh stretch + min-max
-          normalization
-    config: Optional config dictionary containing
-        normalization stats.
+        - "linear": Min-max normalization (x - min) / (max - min)
+        - "arcsinh": Arcsinh stretch + min-max normalization
+    config: Optional config dictionary containing normalization stats.
         For arcsinh: expects {"arcsinh": {"min": [...],
         "max": [...], "scale": [...]}}
         For linear: expects {"linear": {"min": [...],
         "max": [...]}}
-    stats: Optional pre-loaded normalization statistics
-        object.
+    stats: Optional pre-loaded normalization statistics object.
         - For "linear": expects a LinearNormStats instance
         - For "arcsinh": expects a ASinhNormStats instance
-    stats_path: Optional path to load pre-computed
-        normalization statistics (YAML file).
-        - For "linear": expects a YAML file with keys
-          "min" and "max"
-        - For "arcsinh": expects a YAML file with keys
-          "min", "max", and "scale"
+    stats_path: Optional path to load pre-computed normalization
+        statistics (YAML file).
+        - For "linear": expects a YAML file with keys "min" and "max"
+        - For "arcsinh": expects a YAML file with keys "min", "max",
+            and "scale"
     compute_stats: Optional dataset to compute statistics from.
         Stats will be computed on-the-fly from this dataset.
     return_denorm: If True, also return the denormalization function.
@@ -337,17 +331,17 @@ def get_image_norm_fn(
     --------
     If return_denorm is False:
         A tuple of (normalize_fn, norm_stats) where:
-            - normalize_fn: Callable that normalizes
-              images (C, H, W) -> (C, H, W)
+            - normalize_fn: Callable that normalizes images
+              (C, H, W) -> (C, H, W)
             - norm_stats: The normalization stats object
               (LinearNormStats or ASinhNormStats)
     If return_denorm is True:
         A tuple of (normalize_fn, denormalize_fn,
         norm_stats) where:
-            - normalize_fn: Callable that normalizes
-              images (C, H, W) -> (C, H, W)
-            - denormalize_fn: Callable that denormalizes
-              images (C, H, W) -> (C, H, W)
+            - normalize_fn: Callable that normalizes images
+              (C, H, W) -> (C, H, W)
+            - denormalize_fn: Callable that denormalizes images
+              (C, H, W) -> (C, H, W)
             - norm_stats: The normalization stats object
               (LinearNormStats or ASinhNormStats)
     """
@@ -629,12 +623,10 @@ def get_conditional_norm_fn(
     stats_path: Optional path to load from YAML.
         Expects keys "cols", "min", "max".
     compute_stats: Optional tuple of (dataset, cols)
-        or (dataset, cols, filter_value). dataset is
-        a HuggingFace Dataset, cols is a list of
-        column names. filter_value is sentinel
-        value (default: 999.0).
-    return_denorm: If True, also return the
-        denormalization function.
+        or (dataset, cols, filter_value).
+        dataset is a HuggingFace Dataset, cols is a list of column
+        names. filter_value is sentinel value (default: 999.0).
+    return_denorm: If True, also return the denormalization function.
 
     Returns:
     --------
@@ -713,14 +705,11 @@ def load_stats_from_config(
     Parameters:
     -----------
     norm_config: Config dictionary with stats.
-        For image stats: expects `arcsinh` or
-        `linear` with nested stats. For conditional
-        stats: expects `cols`, `min`, `max`.
-    image: If True, load image stats. If False,
-        load conditional stats.
-    norm_type: Type of image normalization
-        ("linear" or "arcsinh"). Only used when
-        image=True.
+        For image stats: expects `arcsinh` or `linear` with nested
+        stats. For conditional stats: expects `cols`, `min`, `max`.
+    image: If True, load image stats. If False, load conditional stats.
+    norm_type: Type of image normalization ("linear" or "arcsinh").
+        Only used when image=True.
 
     Returns:
     --------

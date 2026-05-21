@@ -19,8 +19,7 @@ class HSCDataset(torch.utils.data.Dataset):
     Mask convention: ``1 = valid, 0 = invalid``.
 
     Args:
-        hf_dataset: HuggingFace Dataset with
-            'image' column
+        hf_dataset: HuggingFace Dataset with 'image' column
         nx: Side length of center-cropped patch
         image_norm_fn: Optional normalization
         return_aux_data: Return auxiliary data

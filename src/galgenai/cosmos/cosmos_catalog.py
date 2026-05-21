@@ -29,30 +29,28 @@ class COSMOSWebCatalog:
         Parameters:
         -----------
         catalog_path : str, optional
-            Path to the COSMOSWeb FITS catalog file.
-            If not provided, loads path from config file
-            (galgenai_config.yaml). The catalog is not
-            included in the package and must be downloaded
-            separately.
+            Path to the COSMOSWeb FITS catalog file. If not provided,
+            loads path from config file (galgenai_config.yaml).
+            The catalog is not included in the package and must be
+            downloaded separately.
         required_columns_only : bool, optional
-            If True, only load columns specified in
-            required_columns (default: False)
+            If True, only load columns specified in required_columns
+            (default: False)
         required_columns : list of str, optional
             List of column names to load from the catalog
             (default: None, loads all columns)
         warn_flag_cut : int, optional
-            Filter galaxies by warn_flag value. If None,
-            no filtering applied (default: 0)
+            Filter galaxies by warn_flag value. If None, no filtering
+            applied (default: 0)
         galaxies_only : bool, optional
-            If True, filter out stars and QSOs, keeping
-            only galaxies (default: True). The
-            classification comes from LePHARE.
+            If True, filter out stars and QSOs, keeping only galaxies
+            (default: True). The classification comes from LePHARE.
         filter_invalid_mags : bool, optional
-            If True, filter out galaxies with sentinel
-            magnitude values (default: False)
+            If True, filter out galaxies with sentinel magnitude values
+            (default: False)
         mag_sentinel : float, optional
-            Sentinel value indicating missing magnitude
-            data (default: 999.0)
+            Sentinel value indicating missing magnitude data
+            (default: 999.0)
         """
         if catalog_path is None:
             # Try config file first
