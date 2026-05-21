@@ -1,8 +1,11 @@
 """
-Compute and save normalization statistics for galaxy datasets (COSMOS or HSC MMU).
+Compute and save normalization statistics.
+
+For galaxy datasets (COSMOS or HSC MMU).
 
 This script:
-1. Reads dataset path, crop size (nx), and condition columns from config file
+1. Reads dataset path, crop size (nx), and condition columns from
+   config file
 2. Loads the entire dataset (COSMOS FITS or HSC MMU Arrow format)
 3. Computes image normalization statistics using min-max normalization:
    - Linear: Direct min-max normalization on raw flux
@@ -15,19 +18,21 @@ By default uses a subset of 2000 objects to compute the statistics.
 --n-samples can be used to modify this.
 
 The script reads these parameters from the config file:
-  - cosmos.hf_dataset_path: Path to dataset directory
-  - training.nx: Crop size for images
-  - training.cnf.condition_cols: List of conditioning columns (COSMOS only)
+- cosmos.hf_dataset_path: Path to dataset directory
+- training.nx: Crop size for images
+- training.cnf.condition_cols: List of condition columns (COSMOS only)
 
 Run with:
-    # Minimal example:
-        uv run python scripts/compute_norm_stats.py --dataset-type cosmos
+# Minimal example:
+uv run python scripts/compute_norm_stats.py --dataset-type cosmos
 
-    # COSMOS dataset:
-    uv run python scripts/compute_norm_stats.py --dataset-type cosmos --n-samples 2000 --config-path ./my_config.yaml
+# COSMOS dataset:
+uv run python scripts/compute_norm_stats.py --dataset-type cosmos \
+        --n-samples 2000 --config-path ./my_config.yaml
 
-    # HSC MMU dataset:
-    uv run python scripts/compute_norm_stats.py --dataset-type hsc_mmu --config-path ./my_config.yaml
+# HSC MMU dataset:
+uv run python scripts/compute_norm_stats.py --dataset-type hsc_mmu \
+        --config-path ./my_config.yaml
 """
 
 import argparse
@@ -50,7 +55,7 @@ from galgenai.data.normalization import (
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Compute normalization statistics for galaxy datasets. "
-                    "All dataset parameters are read from config file.",
+        "All dataset parameters are read from config file.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
@@ -59,31 +64,31 @@ def parse_args():
         type=str,
         choices=["cosmos", "hsc_mmu"],
         required=True,
-        help="Dataset type: 'cosmos' for COSMOS FITS dataset, 'hsc_mmu' for HSC MMU dataset"
+        help="Dataset type: cosmos or hsc_mmu",
     )
     parser.add_argument(
         "--n-samples",
         type=int,
         default=2000,
-        help="Number of samples to use for computing stats (default: use entire dataset)"
+        help="Number of samples for stats (default: entire dataset)",
     )
     parser.add_argument(
         "--config-path",
         type=str,
         default=None,
-        help="Path to config file (default: src/galgenai/galgenai_config.yaml)"
+        help="Path to config file (default: galgenai_config.yaml)",
     )
     parser.add_argument(
         "--write-to-config",
         action="store_true",
         default=True,
-        help="Write computed stats to the config file (default: True)"
+        help="Write stats to config file (default: True)",
     )
     parser.add_argument(
         "--skip-conditions",
         action="store_true",
         default=False,
-        help="Skip computing conditional normalization statistics (default: False for cosmos, True for hsc_mmu)"
+        help="Skip computing conditional stats",
     )
 
     return parser.parse_args()
@@ -119,8 +124,8 @@ def main():
 
     if not cfg:
         raise ValueError(
-            "Config file is empty or not found. Please provide a valid config file path "
-            "or ensure the default config exists at src/galgenai/galgenai_config.yaml"
+            "Config file is empty or not found. "
+            "Please provide a valid config file path."
         )
 
     # Extract parameters from config
@@ -129,7 +134,9 @@ def main():
 
     data_dir = dataset_cfg.get("hf_dataset_path")
     if not data_dir:
-        raise ValueError(f"{args.dataset_type}.hf_dataset_path not found in config file")
+        raise ValueError(
+            f"{args.dataset_type}.hf_dataset_path not found in config file"
+        )
 
     nx = train_cfg.get("nx", 32)
     condition_cols = train_cfg.get("cnf", {}).get("condition_cols", [])
@@ -139,21 +146,26 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 70)
-    print(f"COMPUTING NORMALIZATION STATISTICS FOR {args.dataset_type.upper()} DATASET")
+    ds_type = args.dataset_type.upper()
+    print(f"COMPUTING NORMALIZATION STATISTICS FOR {ds_type}")
+    # Continue to next line
     print("=" * 70)
 
-    print(f"\nConfig file: {args.config_path if args.config_path else 'default'}")
+    print(
+        f"\nConfig file: {args.config_path if args.config_path else 'default'}"
+    )
     print(f"Dataset type: {args.dataset_type}")
     print(f"Dataset path: {data_dir}")
     print(f"Output directory: {output_dir}")
-    print(f"Number of samples: {args.n_samples if args.n_samples else 'entire dataset'}")
+    n_samples = args.n_samples if args.n_samples else "entire dataset"
+    print(f"Number of samples: {n_samples}")
     print(f"Crop size: {nx}x{nx}")
     print(f"Condition columns: {condition_cols}")
     print(f"Skip conditions: {args.skip_conditions}")
 
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # Load dataset
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
     print("\n" + "-" * 70)
     print("Loading dataset...")
     print("-" * 70)
@@ -170,10 +182,9 @@ def main():
 
     print(f"Dataset size: {len(dataset_raw)}")
 
-
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # Compute image normalization stats
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
     print("\n" + "-" * 70)
     print("Computing image normalization statistics...")
     print("-" * 70)
@@ -205,9 +216,7 @@ def main():
     # Arcsinh normalization
     print("\n[2/3] Computing arcsinh normalization stats...")
     arcsinh_stats = compute_arcsinh_norm_stats(
-        wrapped_dataset,
-        n_samples=args.n_samples,
-        scale_quantile=.98
+        wrapped_dataset, n_samples=args.n_samples, scale_quantile=0.98
     )
 
     arcsinh_stats_path = output_dir / "arcsinh_norm_stats.yaml"
@@ -218,9 +227,9 @@ def main():
     print(f"  Scale: {[round(x, 2) for x in arcsinh_stats.scale.tolist()]}")
     print(f"  Saved to: {arcsinh_stats_path}")
 
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # Compute conditional normalization stats
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
     print("\n[3/3] Computing conditional normalization stats...")
 
     if args.dataset_type == "hsc_mmu":
@@ -250,9 +259,9 @@ def main():
         cond_stats = None
         cond_stats_path = None
 
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # Write to config file if requested
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
     if args.write_to_config:
         print("\n" + "-" * 70)
         print("Updating config file...")
@@ -264,9 +273,11 @@ def main():
         else:
             # Use default path
             from galgenai import __file__ as galgenai_init
+
             config_path = Path(galgenai_init).parent / "galgenai_config.yaml"
 
-        # Build stats dictionary (values already rounded to 2 decimal places)
+        # Build stats dictionary (values already rounded to 2
+        # decimal places)
         stats_dict = {
             "image": {
                 "linear": {
@@ -276,7 +287,9 @@ def main():
                 "arcsinh": {
                     "min": [round(x, 2) for x in arcsinh_stats.min.tolist()],
                     "max": [round(x, 2) for x in arcsinh_stats.max.tolist()],
-                    "scale": [round(x, 2) for x in arcsinh_stats.scale.tolist()],
+                    "scale": [
+                        round(x, 2) for x in arcsinh_stats.scale.tolist()
+                    ],
                 },
             },
         }
@@ -292,9 +305,9 @@ def main():
 
         update_config_file(config_path, stats_dict, args.dataset_type)
 
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # Summary
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
     print("\n" + "=" * 70)
     print("DONE")
     print("=" * 70)
@@ -311,7 +324,7 @@ Files created:
         print(f"  - {cond_stats_path.name}")
 
     if args.write_to_config:
-        print(f"\nStatistics written to config file:")
+        print("\nStatistics written to config file:")
         print(f"  {args.dataset_type}.normalization.image.linear")
         print(f"  {args.dataset_type}.normalization.image.arcsinh")
         if cond_stats:

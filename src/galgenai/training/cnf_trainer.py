@@ -31,7 +31,8 @@ class CNFTrainer(BaseTrainer[CNFTrainingConfig]):
 
         Args:
             model: ConditionalNormalizingFlow model
-            train_loader: DataLoader providing (latents, conditions) batches
+            train_loader: DataLoader providing
+                (latents, conditions) batches
             config: CNFTrainingConfig
             val_loader: Optional validation DataLoader
         """
@@ -51,7 +52,8 @@ class CNFTrainer(BaseTrainer[CNFTrainingConfig]):
         print(f"  Total training steps: {config.num_steps:,}")
 
     def _setup_optimizer(self):
-        """Set up AdamW with cosine annealing (default) or custom scheduler."""
+        """Set up AdamW with cosine annealing (default) or
+        custom scheduler."""
         trainable_params = [
             p for p in self.model.parameters() if p.requires_grad
         ]
@@ -175,7 +177,8 @@ class CNFTrainer(BaseTrainer[CNFTrainingConfig]):
         """
         self.model.eval()
 
-        # Get conditioning from validation set (or training if no val set)
+        # Get conditioning from validation set
+        # (or training if no val set)
         loader = self.val_loader if self.val_loader else self.train_loader
         batch = next(iter(loader))
         _, conditions = batch
@@ -229,7 +232,9 @@ class CNFTrainer(BaseTrainer[CNFTrainingConfig]):
 
         self.model.train()
         if self.device.type == "mps":
-            print("torch.compile() skipped on MPS (inductor Metal backend bug)")
+            print(
+                "torch.compile() skipped on MPS (inductor Metal backend bug)"
+            )
         else:
             try:
                 self.model = torch.compile(self.model)
@@ -309,7 +314,8 @@ class CNFTrainer(BaseTrainer[CNFTrainingConfig]):
 
                 self._log_metrics(avg_metrics)
 
-                # Track best loss (use validation if available, otherwise training)
+                # Track best loss (use validation if available,
+                # otherwise training)
                 if val_metrics:
                     current_loss = val_metrics["val_nll_loss"]
                 else:
@@ -320,8 +326,9 @@ class CNFTrainer(BaseTrainer[CNFTrainingConfig]):
                     loss_type = "val" if val_metrics else "train"
                     self.save_checkpoint(is_best=True)
                     pbar.write(
-                        f"  New best {loss_type} loss {current_loss:.4f} at step "
-                        f"{self.global_step} — saved best.pt"
+                        f"  New best {loss_type} loss"
+                        f" {current_loss:.4f} at step"
+                        f" {self.global_step} — saved best.pt"
                     )
 
                 # Reset running stats
@@ -353,5 +360,6 @@ class CNFTrainer(BaseTrainer[CNFTrainingConfig]):
         pbar.close()
         print("\nTraining complete")
 
-        # Save final checkpoint (best.pt already saved whenever a new best was found)
+        # Save final checkpoint (best.pt already saved
+        # whenever a new best was found)
         self.save_checkpoint()

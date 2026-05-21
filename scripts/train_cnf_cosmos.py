@@ -7,7 +7,7 @@ by generate_hf_dataset.py (or generate_fits_dataset.py):
   Stage 1  Train a VAE on COSMOS multi-band images.
   Stage 2  Freeze the VAE encoder, precompute latent codes from the
            training and validation sets, then train a Conditional
-           Normalizing Flow (CNF). 
+           Normalizing Flow (CNF).
 
 sampling:
 
@@ -18,7 +18,8 @@ sampling:
 
 Run with:
     uv run python scripts/train_cnf_cosmos.py --run-name my_run
-    uv run python scripts/train_cnf_cosmos.py --run-name my_run --skip-vae
+    uv run python scripts/train_cnf_cosmos.py --run-name my_run \\
+        --skip-vae
 """
 
 import argparse
@@ -46,7 +47,7 @@ from galgenai.training import (
     VAETrainer,
     load_vae_training_config,
     load_cnf_training_config,
-)   
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -58,7 +59,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--skip-vae",
         action="store_true",
-        help="Skip VAE training and load from existing checkpoint"
+        help="Skip VAE training and load from existing checkpoint",
     )
 
     return parser.parse_args()
@@ -70,7 +71,6 @@ def main():
     cfg = load_config()
 
     print(f"Using device: {device}")
-    
 
     # ------------------------------------------------------------------
     # Load all required config values
@@ -112,15 +112,21 @@ def main():
     except KeyError as e:
         raise ValueError(
             f"Missing required config value: {e}. "
-            "Please ensure all required values are present in the config file."
-        )
-    
+            "Please ensure all required values are present in the"
+            " config file."
+        ) from e
+
     print(f"Run name: {run_name}")
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Copy the full config file to output directory
-    config_file_path = Path(__file__).parent.parent / "src" / "galgenai" / "galgenai_config.yaml"
+    config_file_path = (
+        Path(__file__).parent.parent
+        / "src"
+        / "galgenai"
+        / "galgenai_config.yaml"
+    )
     if config_file_path.exists():
         shutil.copy(config_file_path, output_dir / "cnf_galgenai_config.yaml")
         print(f"Copied config to: {output_dir / 'cnf_galgenai_config.yaml'}")
@@ -146,14 +152,17 @@ def main():
         redshift_col=redshift_col,
         mag_sentinel=cosmos_cfg.get("mag_sentinel", 999.0),
         redshift_sentinel=cosmos_cfg.get("redshift_sentinel", -99.0),
-        nx=nx, # Crop when creating cached dataset
+        nx=nx,  # Crop when creating cached dataset
     )
 
     n_total = len(dataset_raw)
     n_train = int(n_total * train_ratio)
     n_val = int(n_total * val_ratio)
     n_test = int(n_total * (1 - train_ratio - val_ratio))
-    print(f"Dataset sizes: {n_train} train / {n_val} val / {n_test} test (total: {n_total})")
+    print(
+        f"Dataset sizes: {n_train} train / {n_val} val / {n_test} test"
+        f" (total: {n_total})"
+    )
 
     # ------------------------------------------------------------------
     # Load normalization configuration
@@ -162,7 +171,7 @@ def main():
 
     # Load image normalization stats from config
     print(f"\nImage normalisation: {vae_image_norm_type}")
-    print(f"  Loading stats from config file")
+    print("  Loading stats from config file")
 
     image_norm_fn, norm_stats = get_image_norm_fn(
         img_norm_type=vae_image_norm_type,
@@ -177,7 +186,7 @@ def main():
     # ------------------------------------------------------------------
     print(f"\nConditioning columns ({condition_dim}): {condition_cols}")
 
-    print(f"  Loading conditional stats from config file")
+    print("  Loading conditional stats from config file")
     conditional_norm_fn, cond_stats = get_conditional_norm_fn(
         config=norm_cfg["conditions"],
     )
@@ -199,7 +208,8 @@ def main():
     print("\n\nCreating data loaders:\n")
 
     # Create loaders with both image and conditional normalization
-    # Returns (flux, ivar, mask, condition) tuples when return_aux_data=True and condition_cols are set
+    # Returns (flux, ivar, mask, condition) tuples when
+    # return_aux_data=True and condition_cols are set
     # VAE will use (flux, ivar, mask), CNF will use (flux, condition)
     train_loader, val_loader, test_loader = make_loaders(
         dataset_raw,
@@ -226,7 +236,6 @@ def main():
     # Stage 1: VAE
     # ------------------------------------------------------------------
     if not args.skip_vae:
-
         print("\n" + "=" * 60)
         print("STAGE 1: TRAINING VAE")
         print("=" * 60)
@@ -279,7 +288,9 @@ def main():
         latent_dim=latent_dim,
         input_size=nx,
     )
-    checkpoint = torch.load(vae_ckpt_path, map_location=device, weights_only=False)
+    checkpoint = torch.load(
+        vae_ckpt_path, map_location=device, weights_only=False
+    )
     vae.load_state_dict(checkpoint["model_state_dict"])
 
     # Extract encoder and freeze it
@@ -295,7 +306,8 @@ def main():
 
     # ---- Precompute latents + conditions -------------------------
     print("\nPrecomputing VAE latent codes ...")
-    # train_loader and val_loader already have (flux, ivar, mask, condition) tuples
+    # train_loader and val_loader already have (flux, ivar,
+    # mask, condition) tuples
     # precompute_latents will use flux and condition from these loaders
 
     latent_cache_dir = output_dir / "latent_cache"
@@ -304,19 +316,23 @@ def main():
 
     print("  Encoding training set ...")
     cnf_train_loader = precompute_latents(
-        encoder, train_loader, device,
+        encoder,
+        train_loader,
+        device,
         cache_path=train_cache_path,
         return_dataloader=True,
         batch_size=batch_size,
-        shuffle=True
+        shuffle=True,
     )
     print("  Encoding validation set ...")
     cnf_val_loader = precompute_latents(
-        encoder, val_loader, device,
+        encoder,
+        val_loader,
+        device,
         cache_path=val_cache_path,
         return_dataloader=True,
         batch_size=batch_size,
-        shuffle=False
+        shuffle=False,
     )
 
     # Get dataset info from the dataloaders
@@ -337,10 +353,7 @@ def main():
         num_blocks=cnf_num_blocks,
         hidden_dim=cnf_hidden_dim,
     ).to(device)
-    print(
-        f"\nCNF parameters: "
-        f"{sum(p.numel() for p in cnf.parameters()):,}"
-    )
+    print(f"\nCNF parameters: {sum(p.numel() for p in cnf.parameters()):,}")
     print(f"  latent_dim    : {latent_dim_actual}")
     print(f"  condition_dim : {condition_dim}  {condition_cols}")
     print(f"  num_blocks    : {cnf_num_blocks}")
@@ -359,9 +372,7 @@ def main():
     cnf_trainer.train()
 
     print("CNF training complete!")
-    print(
-        f"Checkpoints saved to: {output_dir / 'cnf' / 'checkpoints'}"
-    )
+    print(f"Checkpoints saved to: {output_dir / 'cnf' / 'checkpoints'}")
 
     # ------------------------------------------------------------------
     # Summary
