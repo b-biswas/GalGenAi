@@ -1,6 +1,5 @@
-"""Normalization and denormalization utilities.
-
-For COSMOS galaxy images and magnitudes.
+"""Normalization and denormalization utilities for COSMOS
+galaxy images and magnitudes.
 """
 
 from functools import partial
@@ -44,7 +43,8 @@ class ASinhNormStats:
 
 @dataclass
 class LinearNormStats:
-    """Per-channel min/max statistics for normalization.
+    """Per-channel min/max statistics for min-max normalization
+    of images.
 
     The normalization is: (x - min) / (max - min)
     """
@@ -69,11 +69,11 @@ def compute_linear_norm_stats(
 
     Parameters:
     -----------
-    dataset: A torch Dataset whose items are image
-        tensors shape: (C, H, W) or ``(image, ...)``
-        tuples where the first element is the image.
-    n_samples: Number of images to sample. Default
-        is None which uses the full dataset.
+    dataset: A torch Dataset whose items are image tensors
+        shape: (C, H, W) or ``(image, ...)`` tuples where
+        the first element is the image.
+    n_samples: Number of images to sample.
+        Default is set to None which uses the full dataset.
     seed: Random seed for reproducible sub-sampling
 
     Returns:
@@ -135,15 +135,15 @@ def compute_arcsinh_norm_stats(
     seed: int = 0,
     scale_quantile=0.95,
 ) -> ASinhNormStats:
-    """Estimate min, max, and scale from dataset.
+    """Estimate per-channel min, max, and scale from a
+    subset of the dataset.
 
-    The scale parameter is computed per-band as the
-    mean of the top `scale_quantile` percentile flux
-    values for that band to reduce the influence of
-    background noise.
+    The scale parameter is computed per-band as the mean
+    of the top `scale_quantile` percentile flux values for
+    that band to reduce the influence of background noise.
 
-    Min and max are computed after the arcsinh
-    stretch for min-max normalization
+    Min and max are computed after the arcsinh stretch for
+    min-max normalization
     """
     n = len(dataset)
     rng = np.random.default_rng(seed)
@@ -201,7 +201,8 @@ def compute_arcsinh_norm_stats(
 
 
 def arcsinh_norm(x: torch.Tensor, stats: ASinhNormStats) -> torch.Tensor:
-    """Normalise raw flux using arcsinh stretch."""
+    """Normalise raw flux using arcsinh stretch then min-max
+    normalization"""
     stats = stats.to(x.device)
     x = arcsinh_stretch(x, stats.scale)
     min_val = stats.min[:, None, None]
@@ -220,7 +221,8 @@ def arcsinh_denorm(x: torch.Tensor, stats: ASinhNormStats) -> torch.Tensor:
 
 
 def linear_norm(x: torch.Tensor, stats: LinearNormStats) -> torch.Tensor:
-    """Normalise raw flux using min-max scaling."""
+    """Normalise raw flux using min-max scaling:
+    (x - min) / (max - min)."""
     stats = stats.to(x.device)
     min_ = stats.min[:, None, None]
     max_ = stats.max[:, None, None]
@@ -308,20 +310,25 @@ def get_image_norm_fn(
     -----------
     img_norm_type: Type of normalization. Options:
         - "linear": Min-max normalization
-        - "arcsinh": Arcsinh stretch + min-max norm
-    config: Optional config dict with normalization
-        stats. For arcsinh: expects {"arcsinh":
-        {"min": [...], "max": [...], "scale": [...]}}.
+          (x - min) / (max - min)
+        - "arcsinh": Arcsinh stretch + min-max
+          normalization
+    config: Optional config dictionary containing
+        normalization stats.
+        For arcsinh: expects {"arcsinh": {"min": [...],
+        "max": [...], "scale": [...]}}
         For linear: expects {"linear": {"min": [...],
-        "max": [...]}}.
-    stats: Optional pre-loaded normalization
-        statistics object. For "linear": expects
-        LinearNormStats. For "arcsinh": expects
-        ASinhNormStats.
+        "max": [...]}}
+    stats: Optional pre-loaded normalization statistics
+        object.
+        - For "linear": expects a LinearNormStats instance
+        - For "arcsinh": expects a ASinhNormStats instance
     stats_path: Optional path to load pre-computed
         normalization statistics (YAML file).
-        For "linear": expects "min" and "max" keys.
-        For "arcsinh": expects "min", "max", "scale".
+        - For "linear": expects a YAML file with keys
+          "min" and "max"
+        - For "arcsinh": expects a YAML file with keys
+          "min", "max", and "scale"
     compute_stats: Optional dataset to compute statistics from.
         Stats will be computed on-the-fly from this dataset.
     return_denorm: If True, also return the denormalization function.
@@ -332,18 +339,17 @@ def get_image_norm_fn(
         A tuple of (normalize_fn, norm_stats) where:
             - normalize_fn: Callable that normalizes
               images (C, H, W) -> (C, H, W)
-            - norm_stats: The normalization stats
-              object (LinearNormStats or
-              ASinhNormStats)
+            - norm_stats: The normalization stats object
+              (LinearNormStats or ASinhNormStats)
     If return_denorm is True:
         A tuple of (normalize_fn, denormalize_fn,
         norm_stats) where:
-            - normalize_fn: Callable that
-              normalizes images
-            - denormalize_fn: Callable that
-              denormalizes images
-            - norm_stats: The normalization stats
-              object
+            - normalize_fn: Callable that normalizes
+              images (C, H, W) -> (C, H, W)
+            - denormalize_fn: Callable that denormalizes
+              images (C, H, W) -> (C, H, W)
+            - norm_stats: The normalization stats object
+              (LinearNormStats or ASinhNormStats)
     """
     # Check that at least one option is provided
     if (
@@ -353,8 +359,10 @@ def get_image_norm_fn(
         and compute_stats is None
     ):
         raise ValueError(
-            "Must provide at least one of: config, "
-            "stats, stats_path, or compute_stats."
+            "Must provide at least one of: config, stats, "
+            "stats_path, or compute_stats. "
+            "Cannot create normalization function without "
+            "normalization statistics."
         )
 
     if img_norm_type == "linear":
@@ -654,8 +662,10 @@ def get_conditional_norm_fn(
         and compute_stats is None
     ):
         raise ValueError(
-            "Must provide at least one of: config, "
-            "stats, stats_path, or compute_stats."
+            "Must provide at least one of: config, stats, "
+            "stats_path, or compute_stats. "
+            "Cannot create normalization function without "
+            "normalization statistics."
         )
 
     # Priority 1: Load from config

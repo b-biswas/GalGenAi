@@ -241,7 +241,8 @@ class LCFMTrainer(BaseTrainer[LCFMTrainingConfig]):
 
                 self._log_metrics(avg_metrics)
 
-                # Track best loss (val if available, else train)
+                # Track best loss (use validation if available,
+                # otherwise training)
                 if val_metrics:
                     current_loss = val_metrics["val_total_loss"]
                 else:
@@ -290,5 +291,6 @@ class LCFMTrainer(BaseTrainer[LCFMTrainingConfig]):
         pbar.close()
         print("\nTraining complete!")
 
-        # Save final checkpoint (best.pt saved on each new best)
+        # Save final checkpoint (best.pt already saved
+        # whenever a new best was found)
         self.save_checkpoint()

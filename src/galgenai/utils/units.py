@@ -26,8 +26,9 @@ def counts_to_magnitude(counts, survey, filter_name):
     """
     filter_obj = survey.get_filter(filter_name)
 
-    # counts = k * 10^(-mag/2.5), where k = 10^(zp/2.5) * t_exp
-    # This gives us: k = 10^(zp/2.5) * t_exp
+    # counts = k * 10^(-mag/2.5), where
+    # k = 10^(zeropoint/2.5) * exposure_time
+    # This gives us: k = 10^(zeropoint/2.5) * exposure_time
     ref_counts = mag2counts(0.0, survey=survey, filter=filter_obj).value
 
     mag = -2.5 * np.log10(counts / ref_counts)

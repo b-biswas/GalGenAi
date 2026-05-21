@@ -149,9 +149,9 @@ def main():
     print(f"Condition columns: {condition_cols}")
     print(f"Skip conditions: {args.skip_conditions}")
 
-    # -------------------------------------------------------
+    # ------------------------------------------------------------------
     # Load dataset
-    # -------------------------------------------------------
+    # ------------------------------------------------------------------
     print("\n" + "-" * 70)
     print("Loading dataset...")
     print("-" * 70)
@@ -168,9 +168,9 @@ def main():
 
     print(f"Dataset size: {len(dataset_raw)}")
 
-    # -------------------------------------------------------
+    # ------------------------------------------------------------------
     # Compute image normalization stats
-    # -------------------------------------------------------
+    # ------------------------------------------------------------------
     print("\n" + "-" * 70)
     print("Computing image normalization statistics...")
     print("-" * 70)
@@ -213,9 +213,9 @@ def main():
     print(f"  Scale: {[round(x, 2) for x in arcsinh_stats.scale.tolist()]}")
     print(f"  Saved to: {arcsinh_stats_path}")
 
-    # -------------------------------------------------------
+    # ------------------------------------------------------------------
     # Compute conditional normalization stats
-    # -------------------------------------------------------
+    # ------------------------------------------------------------------
     print("\n[3/3] Computing conditional normalization stats...")
 
     if args.dataset_type == "hsc_mmu":
@@ -245,9 +245,9 @@ def main():
         cond_stats = None
         cond_stats_path = None
 
-    # -------------------------------------------------------
+    # ------------------------------------------------------------------
     # Write to config file if requested
-    # -------------------------------------------------------
+    # ------------------------------------------------------------------
     if args.write_to_config:
         print("\n" + "-" * 70)
         print("Updating config file...")
@@ -262,7 +262,8 @@ def main():
 
             config_path = Path(galgenai_init).parent / "galgenai_config.yaml"
 
-        # Build stats dictionary (values rounded to 2 decimal places)
+        # Build stats dictionary (values already rounded to 2
+        # decimal places)
         stats_dict = {
             "image": {
                 "linear": {
@@ -290,9 +291,9 @@ def main():
 
         update_config_file(config_path, stats_dict, args.dataset_type)
 
-    # -------------------------------------------------------
+    # ------------------------------------------------------------------
     # Summary
-    # -------------------------------------------------------
+    # ------------------------------------------------------------------
     print("\n" + "=" * 70)
     print("DONE")
     print("=" * 70)

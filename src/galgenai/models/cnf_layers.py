@@ -267,7 +267,8 @@ class AffineCoupling(nn.Module):
         """
         mask_bool = self.mask.bool()
 
-        # Compact views: masked dims (input to net) and transform dims
+        # Extract compact views: masked dims (input to net) and
+        # transform dims (to be changed)
         z_masked_compact = z[:, mask_bool]  # (batch, masked_dim)
         z_transform_compact = z[:, ~mask_bool]  # (batch, transform_dim)
 

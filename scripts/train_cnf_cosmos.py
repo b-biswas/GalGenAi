@@ -209,7 +209,7 @@ def main():
 
     # Create loaders with both image and conditional normalization
     # Returns (flux, ivar, mask, condition) tuples when
-    # return_aux_data=True and condition_cols are set.
+    # return_aux_data=True and condition_cols are set
     # VAE will use (flux, ivar, mask), CNF will use (flux, condition)
     train_loader, val_loader, test_loader = make_loaders(
         dataset_raw,
@@ -306,7 +306,8 @@ def main():
 
     # ---- Precompute latents + conditions -------------------------
     print("\nPrecomputing VAE latent codes ...")
-    # train_loader/val_loader have (flux, ivar, mask, condition) tuples
+    # train_loader and val_loader already have (flux, ivar,
+    # mask, condition) tuples
     # precompute_latents will use flux and condition from these loaders
 
     latent_cache_dir = output_dir / "latent_cache"

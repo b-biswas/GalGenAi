@@ -181,7 +181,8 @@ def _process_chunk(
                 image_array, var_array, images_path / filename, filter_names
             )
 
-            # Get first filter params (geometry same across filters)
+            # Get the first filter's params (geometry is
+            # same across all filters)
             first_filter_params = galaxy_params[filter_names[0]]
 
             metadata_rows.append(
@@ -226,7 +227,8 @@ def _process_chunk(
 
 
 def _process_chunk_args(args):
-    """Adapter for pool.imap_unordered to call _process_chunk."""
+    """Adapter so pool.imap_unordered can call _process_chunk with a
+    tuple."""
     return _process_chunk(*args)
 
 
@@ -303,7 +305,7 @@ class GalaxySim:
         if psf_type == "moffat":
             if "beta" not in psf_params.keys():
                 raise ValueError(
-                    "beta parameter required for moffat psf. "
+                    "beta parameter is required for moffat psf. "
                     "Add it to psf_params."
                 )
             psf = galsim.Moffat(
@@ -382,7 +384,8 @@ class GalaxySim:
             raise ValueError("Not yet implemented")
         else:
             raise ValueError(
-                f"galaxy_type must be sersic or bulge+disk, got {galaxy_type}"
+                f"galaxy_type should be either sersic or"
+                f" bulge+disk, got {galaxy_type}"
             )
 
         # Create PSF
@@ -391,7 +394,8 @@ class GalaxySim:
         # Convolve galaxy with PSF (both already have gsparams)
         gal_conv = galsim.Convolve([galaxy, psf], gsparams=gsparams)
 
-        # Draw noiseless image (expected counts, for ivar)
+        # Draw noiseless image (expected counts per
+        # pixel, used for ivar)
         image = gal_conv.drawImage(
             nx=self.image_size,
             ny=self.image_size,
