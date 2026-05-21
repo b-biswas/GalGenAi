@@ -95,12 +95,14 @@ class CNFTrainingConfig(BaseTrainingConfig):
     save_every: int = 5_000
 
 
-# ============================================================================
+# ======================================================================
 # Config loading functions
-# ============================================================================
+# ======================================================================
 
 
-def load_vae_training_config(config_path: Optional[str] = None) -> VAETrainingConfig:
+def load_vae_training_config(
+    config_path: Optional[str] = None,
+) -> VAETrainingConfig:
     """
     Load VAE training config from YAML file.
 
@@ -119,7 +121,9 @@ def load_vae_training_config(config_path: Optional[str] = None) -> VAETrainingCo
     vae_config = training_config["vae"]
 
     # Automatically append /vae to output directory
-    output_dir = Path(training_config["output_dir"]) / config["run_name"] /"vae"
+    output_dir = (
+        Path(training_config["output_dir"]) / config["run_name"] / "vae"
+    )
 
     return VAETrainingConfig(
         # VAE-specific
@@ -140,7 +144,9 @@ def load_vae_training_config(config_path: Optional[str] = None) -> VAETrainingCo
     )
 
 
-def load_lcfm_training_config(config_path: Optional[str] = None) -> LCFMTrainingConfig:
+def load_lcfm_training_config(
+    config_path: Optional[str] = None,
+) -> LCFMTrainingConfig:
     """
     Load LCFM training config from YAML file.
 
@@ -159,7 +165,9 @@ def load_lcfm_training_config(config_path: Optional[str] = None) -> LCFMTraining
     lcfm_config = training_config["lcfm"]
 
     # Automatically append /lcfm to output directory
-    output_dir = Path(training_config["output_dir"]) / config["run_name"] / "lcfm"
+    output_dir = (
+        Path(training_config["output_dir"]) / config["run_name"] / "lcfm"
+    )
 
     return LCFMTrainingConfig(
         # LCFM-specific
@@ -182,7 +190,9 @@ def load_lcfm_training_config(config_path: Optional[str] = None) -> LCFMTraining
     )
 
 
-def load_cnf_training_config(config_path: Optional[str] = None) -> CNFTrainingConfig:
+def load_cnf_training_config(
+    config_path: Optional[str] = None,
+) -> CNFTrainingConfig:
     """
     Load CNF training config from YAML file.
 
@@ -201,7 +211,9 @@ def load_cnf_training_config(config_path: Optional[str] = None) -> CNFTrainingCo
     cnf_config = training_config["cnf"]
 
     # Automatically append /cnf to output directory
-    output_dir = Path(training_config["output_dir"]) / config["run_name"] / "cnf"
+    output_dir = (
+        Path(training_config["output_dir"]) / config["run_name"] / "cnf"
+    )
 
     return CNFTrainingConfig(
         # CNF-specific

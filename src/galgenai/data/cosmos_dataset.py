@@ -9,9 +9,9 @@ from datasets import Dataset
 from torch.utils.data import DataLoader, random_split
 
 from galgenai.data.hsc import HSCDataset
-from galgenai.data.latent import precompute_latents, LatentDataset
 
-#TODO: CHECK catalog what the sentinel values are
+
+# TODO: CHECK catalog what the sentinel values are
 def load_fits_dataset(
     data_dir,
     metadata_file="metadata.csv",
@@ -28,57 +28,69 @@ def load_fits_dataset(
     Load a FITS galaxy dataset produced by generate_fits_dataset.py.
 
     All galaxies are stored together under ``data_dir/images/`` with
-    metadata CSV file(s). The returned dataset is then split in make_loaders().
+    metadata CSV file(s). The returned dataset is then split in
+    make_loaders().
 
-    The returned dataset has one column image (nested dict with keys: 
-    flux, ivar, mask, band) plus all metadata columns from
-    the CSV. This layout matches the HSC dataset format so that
-    hsc.HSCDataset can be used directly.
+    The returned dataset has one column image (nested dict with keys:
+    flux, ivar, mask, band) plus all metadata columns from the CSV. This
+    layout matches the HSC dataset format so that hsc.HSCDataset can be
+    used directly.
 
-    If IVAR is absent from a FITS file, a ones array is used (uniform
-    weighting). If MASK is absent, a zeros array is used (no masking).
-
+    If IVAR is absent from a FITS file, a ones array is used
+    (uniform weighting). If MASK is absent, a zeros array is used
+    (no masking).
 
     Parameters:
     -----------
     data_dir : str or Path
-        Root directory of the dataset (contains ``images/`` and metadata CSV).
+        Root directory of the dataset (contains ``images/`` and metadata
+        CSV).
     metadata_file : str or dict
-        If str: Name of a single metadata CSV file. Default "metadata.csv".
+        If str: Name of a single metadata CSV file.
+        Default "metadata.csv".
         If dict: Dictionary mapping split names to metadata filenames.
-                 Returns a dictionary of datasets.
+        Returns a dictionary of datasets.
     format : str
-        Output format for arrays. Options: "torch" (default), "numpy", "tensorflow",
-        or None (Python lists). Default "torch".
+        Output format for arrays. Options: "torch" (default), "numpy",
+        "tensorflow", or None (Python lists). Default "torch".
     filter_invalid_mags : bool
-        If True, filter out galaxies where any magnitude column equals the sentinel
-        value. Default True.
+        If True, filter out galaxies where any magnitude column equals
+        the sentinel value. Default True.
     mag_sentinel : float
-        Sentinel value indicating missing magnitude (default: 999.0). Rows with any
-        magnitude exactly equal to this value will be filtered out.
+        Sentinel value indicating missing magnitude (default: 999.0).
+        Rows with any magnitude exactly equal to this value will be
+        filtered out.
     mag_cols : list of str or None
-        List of magnitude column names to check (e.g., ['mag_g', 'mag_r', 'mag_i']).
-        If None, auto-detects all columns starting with 'mag_'. Default None.
+        List of magnitude column names to check (e.g.,
+        ['mag_g', 'mag_r', 'mag_i']). If None, auto-detects all columns
+        starting with 'mag_'. Default None.
     filter_invalid_redshift : bool
-        If True, filter out galaxies where redshift equals the sentinel value. Default True.
+        If True, filter out galaxies where redshift equals the sentinel
+        value. Default True.
     redshift_sentinel : float
         Sentinel value indicating missing redshift (default: -99.0).
     redshift_col : str
-        Name of the redshift column in metadata. Required if filter_invalid_redshift is True.
+        Name of the redshift column in metadata. Required if
+        filter_invalid_redshift is True.
     nx : int or None
-        Optional crop size. If provided, images will be center-cropped to nx x nx.
-        If None, images are loaded at their original size. Default None.
+        Optional crop size. If provided, images will be center-cropped
+        to nx x nx. If None, images are loaded at their original size.
+        Default None.
 
     Returns:
     --------
     datasets.Dataset or dict
-        HuggingFace Dataset with PyTorch tensors (default format="torch").
-        If metadata_file is str: Single dataset loading from the specified file.
-        If metadata_file is dict: Dictionary mapping split names to datasets.
+        HuggingFace Dataset with PyTorch tensors
+        (default format="torch").
+        If metadata_file is str: Single dataset loading from the
+        specified file.
+        If metadata_file is dict: Dictionary mapping
+        split names to datasets.
     """
     data_dir = Path(data_dir)
 
-    # Handle dictionary of metadata files: if they are splited into train, test, val
+    # Handle dictionary of metadata files: if they are
+    # splited into train, test, val
     if isinstance(metadata_file, dict):
         result = {}
         for split_name, meta_file in metadata_file.items():
@@ -114,32 +126,46 @@ def load_fits_dataset(
             mask = np.ones(len(metadata), dtype=bool)
             for mag_col in mag_cols:
                 if mag_col in metadata.columns:
-                    # Filter out rows where magnitude equals sentinel value
+                    # Filter out rows where magnitude equals
+                    # sentinel value
                     col_mask = metadata[mag_col] <= mag_sentinel
                     mask &= col_mask
 
             metadata = metadata[mask].reset_index(drop=True)
             n_removed = initial_count - len(metadata)
             if n_removed > 0:
-                print(f"Filtered {n_removed} galaxies with invalid magnitudes (sentinel={mag_sentinel})")
+                print(
+                    f"Filtered {n_removed} galaxies with "
+                    f"invalid magnitudes "
+                    f"(sentinel={mag_sentinel})"
+                )
                 print(f"Remaining: {len(metadata)} galaxies")
 
     if filter_invalid_redshift:
-
         if redshift_col is None:
-            raise ValueError("Redshift col name should be provided to apply cuts")
+            raise ValueError(
+                "Redshift col name should be provided to apply cuts"
+            )
 
         if redshift_col in metadata.columns:
             col_mask = metadata[redshift_col] != redshift_sentinel
             metadata = metadata[col_mask].reset_index(drop=True)
             n_removed = len(col_mask) - len(metadata)
             if n_removed > 0:
-                print(f"Filtered {n_removed} galaxies with invalid redshift (sentinel={redshift_sentinel})")
+                print(
+                    f"Filtered {n_removed} galaxies with "
+                    f"invalid redshift "
+                    f"(sentinel={redshift_sentinel})"
+                )
                 print(f"Remaining: {len(metadata)} galaxies")
         else:
-            raise ValueError(f"Warning: Redshift column '{redshift_col}' not found in metadata. Skipping redshift filtering.")
+            raise ValueError(
+                f"Warning: Redshift column '{redshift_col}' not "
+                f"found in metadata. Skipping redshift filtering."
+            )
 
-    # Check for Arrow cache (memory-mappable, avoids reopening FITS files)
+    # Check for Arrow cache (memory-mappable,
+    # avoids reopening FITS files)
     from datasets import load_from_disk
 
     # Cache path includes crop size
@@ -147,18 +173,24 @@ def load_fits_dataset(
     if nx is not None:
         cache_suffix += f"_nx{nx}"
 
-    cache_name = f"arrow_cache{cache_suffix}" if cache_suffix else "arrow_cache_raw"
+    cache_name = (
+        f"arrow_cache{cache_suffix}" if cache_suffix else "arrow_cache_raw"
+    )
     cache_path = data_dir / cache_name
 
     if cache_path.exists():
         print(f"Loading from Arrow cache: {cache_path}")
         dataset = load_from_disk(str(cache_path))
     else:
-        print(f"Arrow cache not found. Loading {len(metadata):,} FITS files...")
+        print(
+            f"Arrow cache not found. Loading {len(metadata):,} FITS files..."
+        )
         print("This ONE-TIME operation will take a few minutes.")
 
         if nx is not None:
-            print(f"Images will be center-cropped to {nx}x{nx} during caching.")
+            print(
+                f"Images will be center-cropped to {nx}x{nx} during caching."
+            )
         else:
             print("Images will be cached at their original size.")
 
@@ -185,7 +217,8 @@ def load_fits_dataset(
             nx2 = nx // 2
             print(f"  - Original size: {og_h}x{og_w}, cropped to: {nx}x{nx}")
 
-        # Process all samples in ONE pass (no concatenation = no fragmentation)
+        # Process all samples in ONE pass
+        # (no concatenation = no fragmentation)
         print(f"Processing {n_total:,} samples...")
         all_samples = []
 
@@ -207,12 +240,18 @@ def load_fits_dataset(
 
             # Crop to target size if nx is provided
             if nx is not None:
-                flux = flux[:, og_nx2-nx2:og_nx2+nx2, og_ny2-nx2:og_ny2+nx2]
-                ivar = ivar[:, og_nx2-nx2:og_nx2+nx2, og_ny2-nx2:og_ny2+nx2]
-                mask = mask[:, og_nx2-nx2:og_nx2+nx2, og_ny2-nx2:og_ny2+nx2]
+                flux = flux[
+                    :, og_nx2 - nx2 : og_nx2 + nx2, og_ny2 - nx2 : og_ny2 + nx2
+                ]
+                ivar = ivar[
+                    :, og_nx2 - nx2 : og_nx2 + nx2, og_ny2 - nx2 : og_ny2 + nx2
+                ]
+                mask = mask[
+                    :, og_nx2 - nx2 : og_nx2 + nx2, og_ny2 - nx2 : og_ny2 + nx2
+                ]
 
             sample = {
-                "image":{
+                "image": {
                     "flux": flux,
                     "ivar": ivar,
                     "mask": mask,
@@ -224,15 +263,20 @@ def load_fits_dataset(
 
             all_samples.append(sample)
 
-        print(f"Creating Arrow cache...")
+        print("Creating Arrow cache...")
         dataset = Dataset.from_list(all_samples)
         del all_samples
 
         # Save to disk with sharding for optimal memory mapping
         print(f"Saving to: {cache_path}")
         dataset.save_to_disk(str(cache_path))
-        cache_size_mb = sum(f.stat().st_size for f in cache_path.rglob("*") if f.is_file()) / 1e6
-        print(f"Cached! ({cache_size_mb:.1f} MB) Future loads will be instant.")
+        cache_size_mb = (
+            sum(f.stat().st_size for f in cache_path.rglob("*") if f.is_file())
+            / 1e6
+        )
+        print(
+            f"Cached! ({cache_size_mb:.1f} MB) Future loads will be instant."
+        )
 
     # Apply format if specified
     if format is not None:
@@ -252,7 +296,9 @@ def make_loaders(
     image_norm_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
     return_aux_data: bool = True,
     condition_cols: Optional[list] = None,
-    conditional_norm_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+    conditional_norm_fn: Optional[
+        Callable[[torch.Tensor], torch.Tensor]
+    ] = None,
     shuffle: bool = True,
     split_datasets: Optional[tuple] = None,
     return_splits: bool = False,
@@ -260,18 +306,20 @@ def make_loaders(
 ):
     """Build train/val/test DataLoaders from a raw dataset.
 
-    Takes a raw dataset and splits it into train/val/test, wraps each split in HSCDataset,
-    and creates dataloaders. Similar to get_dataset_and_loaders in hsc.py.
+    Takes a raw dataset and splits it into train/val/test,
+    wraps each split in HSCDataset, and creates dataloaders.
+    Similar to get_dataset_and_loaders in hsc.py.
 
     Supports multiple data modes:
-    1. VAE training: return_aux_data=True, no conditioning, shuffle=True
-       Returns (flux, ivar, mask) tuples for training.
-
-    2. Latent precomputation: return_aux_data=False, with conditioning
-       Returns (flux, condition) tuples for encoding.
-
-    3. CNF training on raw images: return_aux_data=False, with conditioning, shuffle=True
-       Returns (flux, condition) tuples for direct CNF training (rare).
+    1. VAE training: return_aux_data=True, no conditioning,
+       shuffle=True. Returns (flux, ivar, mask) tuples for
+       training.
+    2. Latent precomputation: return_aux_data=False, with
+       conditioning. Returns (flux, condition) tuples for
+       encoding.
+    3. CNF training on raw images: return_aux_data=False,
+       with conditioning, shuffle=True. Returns (flux,
+       condition) tuples for direct CNF training (rare).
 
     Parameters:
     -----------
@@ -279,23 +327,34 @@ def make_loaders(
     nx: Side length of center-cropped output patch
     batch_size: Batch size for DataLoaders
     num_workers: Number of DataLoader worker processes
-    train_ratio: Fraction of data for training split. Default 0.8.
-    val_ratio: Fraction of data for validation split. Default 0.1.
-    random_seed: Random seed for reproducible splits. Default 42.
-    image_norm_fn: Optional image normalization function. Create externally
-        using get_image_norm_fn() [see normalization.py] and pass here.
-    return_aux_data: If True, return (flux, ivar, mask). If False with conditioning,
-        return (flux, condition). Default True.
-    condition_cols: Optional list of column names for conditioning variables.
-        If provided, enables conditioning mode.
-    conditional_norm_fn: Optional function to normalize conditioning variables.
-        Create externally using get_conditional_norm_fn() and pass here.
-        Required if condition_cols is provided. [see normalization.py]
-    shuffle: Whether to shuffle training data. Default True.
-    split_datasets: Optional tuple of (train_ds, val_ds, test_ds) from a previous call.
-        If provided, uses these splits instead of creating new ones.
-    return_splits: If True, return the split datasets tuple for reuse. Default False.
-    invert_mask: If True, flip the per-pixel mask (``1 - mask``) before
+    train_ratio: Fraction of data for training split.
+        Default 0.8.
+    val_ratio: Fraction of data for validation split.
+        Default 0.1.
+    random_seed: Random seed for reproducible splits.
+        Default 42.
+    image_norm_fn: Optional image normalization function.
+        Create externally using get_image_norm_fn()
+        [see normalization.py] and pass here.
+    return_aux_data: If True, return (flux, ivar, mask).
+        If False with conditioning, return (flux,
+        condition). Default True.
+    condition_cols: Optional list of column names for
+        conditioning variables. If provided, enables
+        conditioning mode.
+    conditional_norm_fn: Optional function to normalize
+        conditioning variables. Create externally using
+        get_conditional_norm_fn() and pass here.
+        Required if condition_cols is provided.
+        [see normalization.py]
+    shuffle: Whether to shuffle training data. Default
+        True.
+    split_datasets: Optional tuple of (train_ds, val_ds,
+        test_ds) from a previous call. If provided, uses
+        these splits instead of creating new ones.
+    return_splits: If True, return the split datasets
+        tuple for reuse. Default False.
+    invert_mask: If True, flip the per-pixel mask
         emitting it. Set this when the source survey writes
         ``1 = bad pixel`` rather than the ``1 = valid pixel`` convention
         the trainers assume. Default False.
@@ -304,9 +363,11 @@ def make_loaders(
     --------
     If return_splits=False: (train_loader, val_loader, test_loader)
         where test_loader is None if train_ratio + val_ratio == 1.0
-    If return_splits=True: (train_loader, val_loader, test_loader, split_datasets)
-        where split_datasets is a tuple (train_ds, val_ds, test_ds) that can be
-        passed to subsequent calls to reuse the same split with different normalization.
+    If return_splits=True:
+        (train_loader, val_loader, test_loader, split_datasets)
+        where split_datasets is a tuple (train_ds, val_ds, test_ds)
+        that can be passed to subsequent calls to reuse the same split
+        with different normalization.
     """
     # Validate conditioning parameters
     if condition_cols is not None and conditional_norm_fn is None:
@@ -326,12 +387,13 @@ def make_loaders(
         return_aux_data=return_aux_data,
         condition_cols=condition_cols or [],
         conditional_norm_fn=conditional_norm_fn,
-        invert_mask=invert_mask
+        invert_mask=invert_mask,
     )
 
     # Split dataset using random_split or reuse existing split
     if split_datasets is not None:
-        # Reuse existing split by extracting indices and creating new Subsets
+        # Reuse existing split by extracting indices and
+        # creating new Subsets
         old_train, old_val, old_test = split_datasets
         train_ds = torch.utils.data.Subset(full_dataset, old_train.indices)
         val_ds = torch.utils.data.Subset(full_dataset, old_val.indices)
@@ -342,7 +404,7 @@ def make_loaders(
         train_ds, val_ds, test_ds = random_split(
             full_dataset,
             [train_ratio, val_ratio, test_ratio],
-            generator=torch.Generator().manual_seed(random_seed)
+            generator=torch.Generator().manual_seed(random_seed),
         )
 
     # Create dataloaders
@@ -352,8 +414,12 @@ def make_loaders(
         shuffle=shuffle,
         num_workers=num_workers,
         pin_memory=use_pin_memory,
-        persistent_workers=True if num_workers > 0 else False,  # Reuse worker processes across epochs
-        prefetch_factor=num_workers * 4 if num_workers > 0 else None,  # Prefetch batches
+        persistent_workers=True
+        if num_workers > 0
+        else False,  # Reuse worker processes across epochs
+        prefetch_factor=num_workers * 4
+        if num_workers > 0
+        else None,  # Prefetch batches
     )
     val_loader = DataLoader(
         val_ds,
@@ -381,6 +447,11 @@ def make_loaders(
         test_loader = None
 
     if return_splits:
-        return train_loader, val_loader, test_loader, (train_ds, val_ds, test_ds)
+        return (
+            train_loader,
+            val_loader,
+            test_loader,
+            (train_ds, val_ds, test_ds),
+        )
     else:
         return train_loader, val_loader, test_loader

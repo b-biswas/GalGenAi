@@ -160,4 +160,3 @@ training:
     - mag_model_hsc-z
     - mag_model_hsc-y
     - zfinal
-
