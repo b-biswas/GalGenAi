@@ -256,6 +256,7 @@ def make_loaders(
     shuffle: bool = True,
     split_datasets: Optional[tuple] = None,
     return_splits: bool = False,
+    invert_mask: bool = False,
 ):
     """Build train/val/test DataLoaders from a raw dataset.
 
@@ -294,6 +295,10 @@ def make_loaders(
     split_datasets: Optional tuple of (train_ds, val_ds, test_ds) from a previous call.
         If provided, uses these splits instead of creating new ones.
     return_splits: If True, return the split datasets tuple for reuse. Default False.
+    invert_mask: If True, flip the per-pixel mask (``1 - mask``) before
+        emitting it. Set this when the source survey writes
+        ``1 = bad pixel`` rather than the ``1 = valid pixel`` convention
+        the trainers assume. Default False.
 
     Returns:
     --------
@@ -321,6 +326,7 @@ def make_loaders(
         return_aux_data=return_aux_data,
         condition_cols=condition_cols or [],
         conditional_norm_fn=conditional_norm_fn,
+        invert_mask=invert_mask
     )
 
     # Split dataset using random_split or reuse existing split
