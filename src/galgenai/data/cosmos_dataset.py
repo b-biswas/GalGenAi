@@ -43,13 +43,10 @@ def load_fits_dataset(
     Parameters:
     -----------
     data_dir : str or Path
-        Root directory of the dataset (contains ``images/`` and metadata
-        CSV).
-    metadata_file : str or dict
-        If str: Name of a single metadata CSV file.
-        Default "metadata.csv".
-        If dict: Dictionary mapping split names to metadata filenames.
-        Returns a dictionary of datasets.
+        Root directory of the dataset
+        (contains ``images/`` and metadata CSV).
+    metadata_file : str
+        Name of the metadata CSV file. Default "metadata.csv".
     format : str
         Output format for arrays. Options: "torch" (default), "numpy",
         "tensorflow", or None (Python lists). Default "torch".
@@ -79,36 +76,11 @@ def load_fits_dataset(
 
     Returns:
     --------
-    datasets.Dataset or dict
+    datasets.Dataset
         HuggingFace Dataset with PyTorch tensors
         (default format="torch").
-        If metadata_file is str: Single dataset loading from the
-        specified file.
-        If metadata_file is dict: Dictionary mapping
-        split names to datasets.
     """
     data_dir = Path(data_dir)
-
-    # Handle dictionary of metadata files: if they are
-    # splited into train, test, val
-    if isinstance(metadata_file, dict):
-        result = {}
-        for split_name, meta_file in metadata_file.items():
-            result[split_name] = load_fits_dataset(
-                data_dir,
-                metadata_file=meta_file,
-                format=format,
-                filter_invalid_mags=filter_invalid_mags,
-                mag_sentinel=mag_sentinel,
-                mag_cols=mag_cols,
-                filter_invalid_redshift=filter_invalid_redshift,
-                redshift_sentinel=redshift_sentinel,
-                redshift_col=redshift_col,
-                nx=nx,
-            )
-        return result
-
-    # Single metadata file
     images_path = data_dir / "images"
     metadata = pd.read_csv(data_dir / metadata_file)
 
@@ -300,8 +272,6 @@ def make_loaders(
         Callable[[torch.Tensor], torch.Tensor]
     ] = None,
     shuffle: bool = True,
-    split_datasets: Optional[tuple] = None,
-    return_splits: bool = False,
     invert_mask: bool = False,
 ):
     """Build train/val/test DataLoaders from a raw dataset.
@@ -349,11 +319,6 @@ def make_loaders(
         [see normalization.py]
     shuffle: Whether to shuffle training data. Default
         True.
-    split_datasets: Optional tuple of (train_ds, val_ds,
-        test_ds) from a previous call. If provided, uses
-        these splits instead of creating new ones.
-    return_splits: If True, return the split datasets
-        tuple for reuse. Default False.
     invert_mask: If True, flip the per-pixel mask
         emitting it. Set this when the source survey writes
         ``1 = bad pixel`` rather than the ``1 = valid pixel`` convention
@@ -361,13 +326,8 @@ def make_loaders(
 
     Returns:
     --------
-    If return_splits=False: (train_loader, val_loader, test_loader)
+    (train_loader, val_loader, test_loader)
         where test_loader is None if train_ratio + val_ratio == 1.0
-    If return_splits=True:
-        (train_loader, val_loader, test_loader, split_datasets)
-        where split_datasets is a tuple (train_ds, val_ds, test_ds)
-        that can be passed to subsequent calls to reuse the same split
-        with different normalization.
     """
     # Validate conditioning parameters
     if condition_cols is not None and conditional_norm_fn is None:
@@ -390,22 +350,13 @@ def make_loaders(
         invert_mask=invert_mask,
     )
 
-    # Split dataset using random_split or reuse existing split
-    if split_datasets is not None:
-        # Reuse existing split by extracting indices and
-        # creating new Subsets
-        old_train, old_val, old_test = split_datasets
-        train_ds = torch.utils.data.Subset(full_dataset, old_train.indices)
-        val_ds = torch.utils.data.Subset(full_dataset, old_val.indices)
-        test_ds = torch.utils.data.Subset(full_dataset, old_test.indices)
-    else:
-        # Create new split
-        test_ratio = 1.0 - train_ratio - val_ratio
-        train_ds, val_ds, test_ds = random_split(
-            full_dataset,
-            [train_ratio, val_ratio, test_ratio],
-            generator=torch.Generator().manual_seed(random_seed),
-        )
+    # Split dataset using random_split
+    test_ratio = 1.0 - train_ratio - val_ratio
+    train_ds, val_ds, test_ds = random_split(
+        full_dataset,
+        [train_ratio, val_ratio, test_ratio],
+        generator=torch.Generator().manual_seed(random_seed),
+    )
 
     # Create dataloaders
     train_loader = DataLoader(
@@ -446,12 +397,4 @@ def make_loaders(
     else:
         test_loader = None
 
-    if return_splits:
-        return (
-            train_loader,
-            val_loader,
-            test_loader,
-            (train_ds, val_ds, test_ds),
-        )
-    else:
-        return train_loader, val_loader, test_loader
+    return train_loader, val_loader, test_loader
