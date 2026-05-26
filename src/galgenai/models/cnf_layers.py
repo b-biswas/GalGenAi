@@ -50,7 +50,8 @@ class ConditionNetwork(nn.Module):
         Parameters:
         -----------
         condition_dim : int
-            Dimension of conditioning (e.g., 6 for redshift + 5 photometry)
+            Dimension of conditioning (e.g., 6 for redshift + 5
+            photometry)
         num_film_params : int
             Total number of FiLM parameters to generate
         hidden_dim : int
@@ -191,8 +192,8 @@ class AffineCoupling(nn.Module):
     Splits input into two parts using a binary mask, then applies:
         z2' = z2 * exp(s(z1, c)) + t(z1, c)
 
-    where s and t are scale and shift predicted by transformation network,
-    and c is conditioning via FiLM parameters.
+    where s and t are scale and shift predicted by transformation
+    network, and c is conditioning via FiLM parameters.
     """
 
     def __init__(
@@ -266,8 +267,9 @@ class AffineCoupling(nn.Module):
         """
         mask_bool = self.mask.bool()
 
-        # Extract compact views: masked dims (input to net) and transform dims (to be changed)
-        z_masked_compact = z[:, mask_bool]      # (batch, masked_dim)
+        # Extract compact views: masked dims (input to net) and
+        # transform dims (to be changed)
+        z_masked_compact = z[:, mask_bool]  # (batch, masked_dim)
         z_transform_compact = z[:, ~mask_bool]  # (batch, transform_dim)
 
         film_params = self.condition_net(condition)
@@ -307,7 +309,7 @@ class AffineCoupling(nn.Module):
         mask_bool = self.mask.bool()
 
         # Extract compact views
-        z_masked_compact = z[:, mask_bool]      # (batch, masked_dim)
+        z_masked_compact = z[:, mask_bool]  # (batch, masked_dim)
         z_transform_compact = z[:, ~mask_bool]  # (batch, transform_dim)
 
         film_params = self.condition_net(condition)

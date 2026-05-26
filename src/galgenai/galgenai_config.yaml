@@ -11,7 +11,7 @@ cosmos:
   val_ratio: 0.2
   test_ratio: 0.2
   num_workers: 8
-  invert_mask: false # set true if survey writes 1=bad pixel (not 1=valid)
+  invert_mask: true # true: dataset masks use 0=good (or absent); trainers expect 1=valid
   max_galaxies: 50000 # inluding train + test + val [Some simulation may fail]
   seed: 42 # To add noise etc.
   max_fft_size: 512
@@ -127,6 +127,7 @@ training:
     beta: 1.0e-08
     save_every: 8
     validate_every: 5
+    log_every: 1
     norm_type: arcsinh
     reconstruction_loss_fn: mse
   lcfm:
@@ -179,4 +180,3 @@ training:
     - mag_model_hsc-z
     - mag_model_hsc-y
     - zfinal
-

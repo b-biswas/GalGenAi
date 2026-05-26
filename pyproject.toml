@@ -54,4 +54,3 @@ max-doc-length = 72  # For docstrings and comments
 
 [tool.ruff.format]
 docstring-code-format = true
-

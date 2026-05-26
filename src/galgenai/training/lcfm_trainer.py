@@ -161,7 +161,9 @@ class LCFMTrainer(BaseTrainer[LCFMTrainingConfig]):
 
         self.model.train()
         if self.device.type == "mps":
-            print("torch.compile() skipped on MPS (inductor Metal backend bug)")
+            print(
+                "torch.compile() skipped on MPS (inductor Metal backend bug)"
+            )
         else:
             try:
                 self.model = torch.compile(self.model)
@@ -239,7 +241,8 @@ class LCFMTrainer(BaseTrainer[LCFMTrainingConfig]):
 
                 self._log_metrics(avg_metrics)
 
-                # Track best loss (use validation if available, otherwise training)
+                # Track best loss (use validation if available,
+                # otherwise training)
                 if val_metrics:
                     current_loss = val_metrics["val_total_loss"]
                 else:
@@ -250,8 +253,9 @@ class LCFMTrainer(BaseTrainer[LCFMTrainingConfig]):
                     loss_type = "val" if val_metrics else "train"
                     self.save_checkpoint(is_best=True)
                     pbar.write(
-                        f"  New best {loss_type} loss {current_loss:.4f} at step "
-                        f"{self.global_step} — saved best.pt"
+                        f"  New best {loss_type} loss"
+                        f" {current_loss:.4f} at step"
+                        f" {self.global_step} — saved best.pt"
                     )
 
                 # Reset running stats
@@ -287,5 +291,6 @@ class LCFMTrainer(BaseTrainer[LCFMTrainingConfig]):
         pbar.close()
         print("\nTraining complete!")
 
-        # Save final checkpoint (best.pt already saved whenever a new best was found)
+        # Save final checkpoint (best.pt already saved
+        # whenever a new best was found)
         self.save_checkpoint()

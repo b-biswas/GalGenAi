@@ -7,28 +7,29 @@ from datasets import Dataset
 
 
 class HSCDataset(torch.utils.data.Dataset):
-    """Unified dataset for HSC/COSMOS galaxy images with optional conditioning.
+    """Unified dataset for galaxy images.
+
+    For HSC/COSMOS with optional conditioning.
 
     Returns different data based on parameters:
-    - return_aux_data=True, condition_cols=None: (flux, ivar, mask)
-    - return_aux_data=True, condition_cols=[...]: (flux, ivar, mask, condition)
-    - return_aux_data=False, condition_cols=None: flux
-    - return_aux_data=False, condition_cols=[...]: (flux, condition)
+    - return_aux_data=True: (flux, ivar, mask)
+    - return_aux_data=False: flux
+    - With conditioning: appends (condition)
+
+    Mask convention: ``1 = valid, 0 = invalid``.
 
     Mask convention: downstream losses (VAE/LCFM/CFM weighted MSE) treat the
     emitted mask as ``1 = valid, 0 = invalid``. Set ``invert_mask=True`` when
     the source survey writes the opposite convention (``1 = bad pixel flag``).
 
     Args:
-        hf_dataset: HuggingFace Dataset with 'image' column containing flux, ivar, mask, band
-        nx: Side length of center-cropped output patch
-        image_norm_fn: Optional image normalization function (C, H, W) -> (C, H, W)
-        return_aux_data: If True, return auxiliary data (ivar, mask). Default True.
-        condition_cols: Optional list of column names for conditioning variables
-        conditional_norm_fn: Optional function to normalize conditioning variables.
-            Create using get_conditional_norm_fn() and pass here.
-        invert_mask: If True, flip the per-pixel mask (``1 - mask``) before
-            emitting it. Default False.
+        hf_dataset: HuggingFace Dataset with 'image' column
+        nx: Side length of center-cropped patch
+        image_norm_fn: Optional normalization
+        return_aux_data: Return auxiliary data
+        condition_cols: Optional column names
+        conditional_norm_fn: Optional function
+        invert_mask: If True, flip mask
     """
 
     def __init__(
@@ -76,7 +77,8 @@ class HSCDataset(torch.utils.data.Dataset):
         ]
 
     def __getitem__(self, idx):
-        image_data = self.dataset[idx]["image"]
+        sample = self.dataset[idx]
+        image_data = sample["image"]
 
         # Extract and crop flux
         flux = self.crop(image_data["flux"])
@@ -89,7 +91,6 @@ class HSCDataset(torch.utils.data.Dataset):
         if self.return_aux_data:
             # Extract and crop inverse variance
             ivar = self.crop(image_data["ivar"])
-            ivar_normalized = self.normalize(ivar ** (-0.5)) ** (-2)
 
             # Extract and crop mask
             mask = image_data["mask"]
@@ -99,12 +100,12 @@ class HSCDataset(torch.utils.data.Dataset):
             if self.invert_mask:
                 mask = 1 - mask
 
-            result.extend([ivar_normalized, mask])
+            result.extend([ivar, mask])
 
         # Add conditioning variables if requested
         if self.condition_cols:
             cond = torch.tensor(
-                [float(self.dataset[idx][c]) for c in self.condition_cols],
+                [float(sample[c]) for c in self.condition_cols],
                 dtype=torch.float32,
             )
 
