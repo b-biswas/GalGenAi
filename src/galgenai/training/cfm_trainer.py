@@ -274,7 +274,7 @@ class CFMTrainer(BaseTrainer[CFMTrainingConfig]):
                     self.save_checkpoint(is_best=True)
                     pbar.write(
                         f"  New best {loss_type} loss "
-                        f"{current_loss:.4f} at step "
+                        f"{current_loss:.3e} at step "
                         f"{self.global_step} — saved best.pt"
                     )
 

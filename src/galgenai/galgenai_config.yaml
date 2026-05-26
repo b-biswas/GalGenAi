@@ -1,10 +1,8 @@
 run_name: arcsinh
 cosmos:
   catalog_path: src/galgenai/cosmos/data/test_catalog_30objects.fits
-  hf_dataset_path: src/galgenai/cosmos/data/HSC_dataset30
-  # catalog_path: src/galgenai/cosmos/data/COSMOSWeb_mastercatalog_v1.fits
-  # hf_dataset_path: src/galgenai/cosmos/data/HSC_dataset
-  image_size: 75
+  hf_dataset_path: /home/bbiswas/HSC_dataset/
+  image_size: 32
   HST_snr_threshold: 50
   split_seed: 42 # To split the dataset
   train_ratio: 0.6
@@ -163,8 +161,8 @@ training:
     - mag_model_hsc-y
     - zfinal
   cfm:
-    steps: 100000
-    lr: 0.0002
+    steps: 50000
+    lr: 0.001
     weight_decay: 0.01
     max_grad_norm: 1.0
     warmup: 1000
