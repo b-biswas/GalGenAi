@@ -223,6 +223,7 @@ def main():
         return_aux_data=True,  # Return (flux, ivar, mask, condition)
         condition_cols=condition_cols,
         conditional_norm_fn=conditional_norm_fn,
+        augment_train=True,
     )
     print(f"Crop size  : {nx}x{nx} px")
     n_train_batches = (n_train + batch_size - 1) // batch_size
