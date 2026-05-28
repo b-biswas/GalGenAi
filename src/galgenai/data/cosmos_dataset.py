@@ -273,6 +273,7 @@ def make_loaders(
     ] = None,
     shuffle: bool = True,
     invert_mask: bool = False,
+    augment_train: bool = False,
 ):
     """Build train/val/test DataLoaders from a raw dataset.
 
@@ -323,6 +324,9 @@ def make_loaders(
         emitting it. Set this when the source survey writes
         ``1 = bad pixel`` rather than the ``1 = valid pixel`` convention
         the trainers assume. Default False.
+    augment_train: If True, apply random rotations and
+        flips to training data only. Validation and test
+        data are never augmented. Default False.
 
     Returns:
     --------
@@ -339,24 +343,35 @@ def make_loaders(
     # Determine if pin_memory should be used (only supported on CUDA)
     use_pin_memory = torch.cuda.is_available()
 
-    # Create HSCDataset wrapper for the full dataset
-    full_dataset = HSCDataset(
-        dataset_raw,
-        nx=nx,
-        image_norm_fn=image_norm_fn,
-        return_aux_data=return_aux_data,
-        condition_cols=condition_cols or [],
-        conditional_norm_fn=conditional_norm_fn,
-        invert_mask=invert_mask,
-    )
-
-    # Split dataset using random_split
+    # Split raw dataset first
+    # This is to apply different augmentation to train vs val/test
     test_ratio = 1.0 - train_ratio - val_ratio
-    train_ds, val_ds, test_ds = random_split(
-        full_dataset,
+    train_raw, val_raw, test_raw = random_split(
+        dataset_raw,
         [train_ratio, val_ratio, test_ratio],
         generator=torch.Generator().manual_seed(random_seed),
     )
+
+    # Create HSCDataset instances with different augmentation settings
+    datasets = []
+    for raw_ds, augment in [
+        (train_raw, augment_train),
+        (val_raw, False),
+        (test_raw, False),
+    ]:
+        ds = HSCDataset(
+            raw_ds,
+            nx=nx,
+            image_norm_fn=image_norm_fn,
+            return_aux_data=return_aux_data,
+            condition_cols=condition_cols or [],
+            conditional_norm_fn=conditional_norm_fn,
+            invert_mask=invert_mask,
+            augment=augment,
+        )
+        datasets.append(ds)
+
+    train_ds, val_ds, test_ds = datasets
 
     # Create dataloaders
     train_loader = DataLoader(
@@ -383,7 +398,6 @@ def make_loaders(
     )
 
     # Create test loader if test set exists
-    test_ratio = 1.0 - train_ratio - val_ratio
     if test_ratio > 0:
         test_loader = DataLoader(
             test_ds,
