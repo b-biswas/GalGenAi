@@ -10,6 +10,7 @@ from tqdm import tqdm
 
 from ..models.cnf import ConditionalNormalizingFlow
 from ..models.lcfm import count_parameters
+from ..models.vae import VAEEncoder
 from .base_trainer import BaseTrainer
 from .config import CNFTrainingConfig
 
@@ -25,18 +26,32 @@ class CNFTrainer(BaseTrainer[CNFTrainingConfig]):
         train_loader: DataLoader,
         config: CNFTrainingConfig,
         val_loader: Optional[DataLoader] = None,
+        encoder: Optional[VAEEncoder] = None,
     ):
         """
         Initialize CNF trainer.
 
         Args:
             model: ConditionalNormalizingFlow model
-            train_loader: DataLoader providing
-                (latents, conditions) batches
+            train_loader: DataLoader providing batches.
+                If encoder is None: (latents, conditions)
+                If encoder is provided:
+                    either (flux img, ivar, mask, condition)
+                    or (flux img, condition)
             config: CNFTrainingConfig
             val_loader: Optional validation DataLoader
+            encoder: Optional trained encoder for on-the-fly encoding.
+                Encodes images to latents during training.
         """
         super().__init__(model, train_loader, config, val_loader)
+
+        # Store encoder and set to eval mode if provided
+        self.encoder = encoder
+        if self.encoder is not None:
+            self.encoder.to(self.device).eval()
+            for param in self.encoder.parameters():
+                param.requires_grad_(False)
+            print("Using on-the-fly latent encoding with frozen VAE encoder")
 
         # Additional CNF-specific directories
         (self.output_dir / "samples").mkdir(exist_ok=True)
@@ -88,19 +103,54 @@ class CNFTrainer(BaseTrainer[CNFTrainingConfig]):
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = lr
 
+    @torch.no_grad()
+    def _extract_latents_and_conditions(
+        self, batch: Any
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Extract latents and conditions from batch.
+
+        If encoder is provided, encodes images on the fly.
+        Otherwise, uses precomputed latents from batch.
+
+        Args:
+            batch: Either (latents, conditions) or
+                (flux, ivar, mask, condition) tuple
+
+        Returns:
+            Tuple of (latents, conditions) tensors
+        """
+        if self.encoder is not None:
+            # On-the-fly encoding
+            # batch is (flux, ivar, mask, condition) / (flux, condition)
+            flux = batch[0].to(self.device)
+            conditions = batch[-1].to(self.device)
+
+            mu, logvar = self.encoder(flux)
+
+            std = torch.exp(0.5 * logvar)
+            eps = torch.randn_like(std)
+            latents = mu + eps * std
+
+            return latents, conditions
+        else:
+            latents, conditions = batch
+            return latents.to(self.device), conditions.to(self.device)
+
     def _train_step(self, batch: Any) -> Dict[str, float]:
         """
         Execute single CNF training step.
 
         Args:
-            batch: Tuple of (latents, conditions) from DataLoader
+            batch: Either (latents, conditions) or
+                (flux, ivar, mask, condition) / (flux, condition)
+                depending on encoder
 
         Returns:
             Dictionary with loss metrics
         """
-        latents, conditions = batch
-        latents = latents.to(self.device)
-        conditions = conditions.to(self.device)
+        # Extract latents and conditions (handles both cases)
+        latents, conditions = self._extract_latents_and_conditions(batch)
 
         # Compute negative log-likelihood loss
         log_probs = self.model.log_prob(latents, conditions)
@@ -145,9 +195,7 @@ class CNFTrainer(BaseTrainer[CNFTrainingConfig]):
         num_batches = 0
 
         for batch in self.val_loader:
-            latents, conditions = batch
-            latents = latents.to(self.device)
-            conditions = conditions.to(self.device)
+            latents, conditions = self._extract_latents_and_conditions(batch)
 
             log_probs = self.model.log_prob(latents, conditions)
             nll = -log_probs.mean()
@@ -181,8 +229,7 @@ class CNFTrainer(BaseTrainer[CNFTrainingConfig]):
         # (or training if no val set)
         loader = self.val_loader if self.val_loader else self.train_loader
         batch = next(iter(loader))
-        _, conditions = batch
-        conditions = conditions.to(self.device)
+        _, conditions = self._extract_latents_and_conditions(batch)
 
         # Take subset of conditions
         conditions = conditions[:num_samples]
@@ -210,9 +257,7 @@ class CNFTrainer(BaseTrainer[CNFTrainingConfig]):
 
         # Get a batch from training data
         batch = next(iter(self.train_loader))
-        latents, conditions = batch
-        latents = latents.to(self.device)
-        conditions = conditions.to(self.device)
+        latents, conditions = self._extract_latents_and_conditions(batch)
 
         # Compute log determinants
         _, log_dets = self.model.forward(latents, conditions)
