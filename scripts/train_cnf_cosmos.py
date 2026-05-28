@@ -171,9 +171,10 @@ def main():
     print(f"\nImage normalisation: {vae_image_norm_type}")
     print("  Loading stats from config file")
 
-    image_norm_fn, norm_stats = get_image_norm_fn(
+    image_norm_fn, image_denorm_fn, norm_stats = get_image_norm_fn(
         img_norm_type=vae_image_norm_type,
         config=norm_cfg["image"],
+        return_denorm=True,
     )
 
     save_image_norm_stats(norm_stats, norm_stats_save_path)
@@ -254,6 +255,7 @@ def main():
             train_loader=train_loader,
             config=vae_config,
             val_loader=val_loader,
+            denorm_fn=image_denorm_fn,
         )
         vae_trainer.train()
 
