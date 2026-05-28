@@ -222,6 +222,7 @@ def main():
         return_aux_data=True,  # Return (flux, ivar, mask, condition)
         condition_cols=condition_cols,
         conditional_norm_fn=conditional_norm_fn,
+        invert_mask=True,
         augment_train=True,
     )
     print(f"Crop size  : {nx}x{nx} px")
