@@ -5,9 +5,8 @@ Trains a two-stage generative model on simulated galaxy images produced
 by generate_hf_dataset.py (or generate_fits_dataset.py):
 
   Stage 1  Train a VAE on COSMOS multi-band images.
-  Stage 2  Freeze the VAE encoder, precompute latent codes from the
-           training and validation sets, then train a Conditional
-           Normalizing Flow (CNF).
+  Stage 2  Freeze the VAE encoder and train a Conditional Normalizing
+           Flow (CNF) on latent representations computed on the fly.
 
 sampling:
 
@@ -39,7 +38,6 @@ from galgenai.data.normalization import (
 from galgenai.data.cosmos_dataset import (
     load_fits_dataset,
     make_loaders,
-    precompute_latents,
 )
 from galgenai.models import VAE, ConditionalNormalizingFlow
 from galgenai.training import (
@@ -223,6 +221,7 @@ def main():
         return_aux_data=True,  # Return (flux, ivar, mask, condition)
         condition_cols=condition_cols,
         conditional_norm_fn=conditional_norm_fn,
+        augment_train=True,
     )
     print(f"Crop size  : {nx}x{nx} px")
     n_train_batches = (n_train + batch_size - 1) // batch_size
@@ -304,57 +303,19 @@ def main():
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
-    # ---- Precompute latents + conditions -------------------------
-    print("\nPrecomputing VAE latent codes ...")
-    # train_loader and val_loader already have (flux, ivar,
-    # mask, condition) tuples
-    # precompute_latents will use flux and condition from these loaders
-
-    latent_cache_dir = output_dir / "latent_cache"
-    train_cache_path = latent_cache_dir / "train.pt"
-    val_cache_path = latent_cache_dir / "val.pt"
-
-    print("  Encoding training set ...")
-    cnf_train_loader = precompute_latents(
-        encoder,
-        train_loader,
-        device,
-        cache_path=train_cache_path,
-        return_dataloader=True,
-        batch_size=batch_size,
-        shuffle=True,
+    print(
+        "\nUsing on-the-fly latent encoding (latents computed during training)"
     )
-    print("  Encoding validation set ...")
-    cnf_val_loader = precompute_latents(
-        encoder,
-        val_loader,
-        device,
-        cache_path=val_cache_path,
-        return_dataloader=True,
-        batch_size=batch_size,
-        shuffle=False,
-    )
-
-    # Get dataset info from the dataloaders
-    n_train = len(cnf_train_loader.dataset)
-    n_val = len(cnf_val_loader.dataset)
-    latent_dim_actual = cnf_train_loader.dataset.latent_dim
-    print(f"  Train latents : {n_train:,} x {latent_dim_actual}")
-    print(f"  Val latents   : {n_val:,} x {latent_dim_actual}")
-
-    del encoder
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
 
     # ---- Build CNF model -----------------------------------------
     cnf = ConditionalNormalizingFlow(
-        latent_dim=latent_dim_actual,
+        latent_dim=latent_dim,
         condition_dim=condition_dim,
         num_blocks=cnf_num_blocks,
         hidden_dim=cnf_hidden_dim,
     ).to(device)
     print(f"\nCNF parameters: {sum(p.numel() for p in cnf.parameters()):,}")
-    print(f"  latent_dim    : {latent_dim_actual}")
+    print(f"  latent_dim    : {latent_dim}")
     print(f"  condition_dim : {condition_dim}  {condition_cols}")
     print(f"  num_blocks    : {cnf_num_blocks}")
     print(f"  hidden_dim    : {cnf_hidden_dim}")
@@ -365,9 +326,10 @@ def main():
 
     cnf_trainer = CNFTrainer(
         model=cnf,
-        train_loader=cnf_train_loader,
+        train_loader=train_loader,
         config=cnf_config,
-        val_loader=cnf_val_loader,
+        val_loader=val_loader,
+        encoder=encoder,
     )
     cnf_trainer.train()
 
