@@ -30,8 +30,19 @@ class VAETrainer(BaseTrainer[VAETrainingConfig]):
         train_loader: DataLoader,
         config: VAETrainingConfig,
         val_loader: Optional[DataLoader] = None,
+        denorm_fn: Optional[Any] = None,
     ):
         super().__init__(model, train_loader, config, val_loader)
+        self.denorm_fn = denorm_fn
+
+        if config.reconstruction_loss_fn == "masked_weighted_mse":
+            if self.denorm_fn is not None:
+                print("Using denorm in flux for masked_weighted_mse loss")
+            else:
+                print(
+                    "WARNING: Not using denorm in masked_weighted_mse."
+                    "Units may not match with ivar"
+                )
 
     def _setup_optimizer(self):
         """Set up Adam optimizer and optional scheduler."""
@@ -61,6 +72,7 @@ class VAETrainer(BaseTrainer[VAETrainingConfig]):
             beta=self.config.beta,
             ivar=ivar,
             mask=mask,
+            denorm_fn=self.denorm_fn,
         )
 
         # Normalize by batch size
@@ -146,6 +158,7 @@ class VAETrainer(BaseTrainer[VAETrainingConfig]):
                 beta=self.config.beta,
                 ivar=ivar,
                 mask=mask,
+                denorm_fn=self.denorm_fn,
             )
 
             batch_size = data.size(0)
