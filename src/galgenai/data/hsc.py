@@ -5,6 +5,8 @@ import torch
 from torch.utils.data import DataLoader, random_split
 from datasets import Dataset
 
+from .augmentation import random_rotation_and_flip
+
 
 class HSCDataset(torch.utils.data.Dataset):
     """Unified dataset for galaxy images.
@@ -30,6 +32,7 @@ class HSCDataset(torch.utils.data.Dataset):
         condition_cols: Optional column names
         conditional_norm_fn: Optional function
         invert_mask: If True, flip mask
+        augment: If True, apply random rotations and flips
     """
 
     def __init__(
@@ -43,6 +46,7 @@ class HSCDataset(torch.utils.data.Dataset):
             Callable[[torch.Tensor], torch.Tensor]
         ] = None,
         invert_mask: bool = False,
+        augment: bool = False,
     ):
         self.dataset = hf_dataset
         self.nx = nx
@@ -51,6 +55,7 @@ class HSCDataset(torch.utils.data.Dataset):
         self.condition_cols = condition_cols or []
         self.conditional_norm_fn = conditional_norm_fn
         self.invert_mask = invert_mask
+        self.augment = augment
 
         # crop
         self.og_nx2 = self.dataset[0]["image"]["flux"].shape[1] // 2
@@ -82,12 +87,8 @@ class HSCDataset(torch.utils.data.Dataset):
 
         # Extract and crop flux
         flux = self.crop(image_data["flux"])
-        flux_normalized = self.normalize(flux)
 
-        # Build return value based on parameters
-        result = [flux_normalized]
-
-        # Add auxiliary data if requested
+        # Process auxiliary data if requested
         if self.return_aux_data:
             # Extract and crop inverse variance
             ivar = self.crop(image_data["ivar"])
@@ -100,6 +101,22 @@ class HSCDataset(torch.utils.data.Dataset):
             if self.invert_mask:
                 mask = 1 - mask
 
+            # Apply augmentation to flux, ivar, and mask together
+            if self.augment:
+                flux, ivar, mask = random_rotation_and_flip(flux, ivar, mask)
+        else:
+            # Apply augmentation to flux only
+            if self.augment:
+                (flux,) = random_rotation_and_flip(flux)
+
+        # Normalize flux after augmentation
+        flux_normalized = self.normalize(flux)
+
+        # Build return value based on parameters
+        result = [flux_normalized]
+
+        # Add auxiliary data if requested
+        if self.return_aux_data:
             result.extend([ivar, mask])
 
         # Add conditioning variables if requested
@@ -130,6 +147,7 @@ def get_dataset_and_loaders(
     batch_size: int = 128,
     num_workers: int = 8,
     invert_mask: bool = False,
+    augment: bool = False,
 ) -> Tuple[HSCDataset, DataLoader, DataLoader]:
     dataset_raw = dataset_raw.select_columns(["image"]).with_format("torch")
 
@@ -140,6 +158,7 @@ def get_dataset_and_loaders(
         nx=nx,
         image_norm_fn=image_norm_fn,
         invert_mask=invert_mask,
+        augment=augment,
     )
     n_bands, n_x, n_y = dataset[0][0].shape  # First element of tuple is flux
     print(f"Images dimension: {n_bands}*{n_x}*{n_y} ({n_gals} galaxies)")
