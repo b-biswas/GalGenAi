@@ -1,6 +1,6 @@
 """Shared training utilities."""
 
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -39,6 +39,7 @@ def vae_loss(
     beta: float = 1.0,
     ivar: Optional[torch.Tensor] = None,
     mask: Optional[torch.Tensor] = None,
+    denorm_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Calculate VAE loss = reconstruction_loss + beta * KL_divergence.
@@ -53,6 +54,9 @@ def vae_loss(
         beta: Weight for KL divergence term (beta-VAE).
         ivar: Inverse variance weights for each pixel (optional).
         mask: Boolean mask indicating valid pixels (optional).
+        denorm_fn: Optional denormalization function to convert
+            normalized images back to flux units before computing loss.
+            Only used with 'masked_weighted_mse'.
 
     Returns:
         Tuple of (total_loss, reconstruction_loss, kl_divergence).
@@ -64,7 +68,17 @@ def vae_loss(
             raise ValueError(
                 "masked_weighted_mse requires both ivar and mask arguments"
             )
-        squared_error = (reconstruction - x).pow(2)
+
+        # Denormalize to flux units if denorm_fn provided
+        if denorm_fn is not None:
+            reconstruction_flux = denorm_fn(reconstruction)
+            x_flux = denorm_fn(x)
+        else:
+            reconstruction_flux = reconstruction
+            x_flux = x
+
+        # Compute weighted MSE in flux units
+        squared_error = (reconstruction_flux - x_flux).pow(2)
         weighted_error = squared_error * ivar * mask.float()
         num_valid_pixels = mask.float().sum()
         recon_loss = weighted_error.sum() / num_valid_pixels.clamp(min=1.0)
