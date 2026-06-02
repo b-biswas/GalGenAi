@@ -76,6 +76,28 @@ class LCFMTrainingConfig(BaseTrainingConfig):
 
 
 @dataclass
+class CFMTrainingConfig(BaseTrainingConfig):
+    """CFM-specific training configuration."""
+
+    # Step-based training
+    num_steps: int = 100_000
+    warmup_steps: int = 1000
+
+    # Sampling during training
+    sample_every: int = 5000
+    num_sample_images: int = 16
+
+    # Validation (should be a multiple of log_every)
+    validate_every: int = 500
+
+    # Override defaults for step-based training
+    log_every: int = 100
+    save_every: int = 10_000
+    learning_rate: float = 2e-4
+    weight_decay: float = 0.01
+
+
+@dataclass
 class CNFTrainingConfig(BaseTrainingConfig):
     """CNF training config."""
 
@@ -183,6 +205,49 @@ def load_lcfm_training_config(
         max_grad_norm=lcfm_config["max_grad_norm"],
         log_every=lcfm_config["log_every"],
         save_every=lcfm_config["save_every"],
+        output_dir=str(output_dir),
+        checkpoint_path=None,
+        device=None,
+        scheduler_factory=None,
+    )
+
+
+def load_cfm_training_config(
+    config_path: Optional[str] = None,
+) -> CFMTrainingConfig:
+    """
+    Load CFM training config from YAML file.
+
+    Parameters
+    ----------
+    config_path : str, optional
+        Path to config file. If None, uses default galgenai_config.yaml
+
+    Returns
+    -------
+    CFMTrainingConfig
+        Configuration instance loaded from file
+    """
+    config = load_config(config_path)
+    training_config = config["training"]
+    cfm_config = training_config["cfm"]
+
+    # Automatically append /cfm to output directory
+    output_dir = Path(training_config["output_dir"]) / "cfm"
+
+    return CFMTrainingConfig(
+        # CFM-specific
+        num_steps=cfm_config["steps"],
+        warmup_steps=cfm_config["warmup"],
+        sample_every=cfm_config["sample_every"],
+        num_sample_images=cfm_config["num_sample_images"],
+        validate_every=cfm_config["validate_every"],
+        # Base config
+        learning_rate=cfm_config["lr"],
+        weight_decay=cfm_config["weight_decay"],
+        max_grad_norm=cfm_config["max_grad_norm"],
+        log_every=cfm_config["log_every"],
+        save_every=cfm_config["save_every"],
         output_dir=str(output_dir),
         checkpoint_path=None,
         device=None,

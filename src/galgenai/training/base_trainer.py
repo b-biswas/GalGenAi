@@ -113,12 +113,12 @@ class BaseTrainer(ABC, Generic[ConfigT]):
     def save_checkpoint(
         self, path: Optional[str] = None, is_best: bool = False
     ):
-        """Save model checkpoint."""
-        if path is None:
-            path = (
-                self.output_dir / "checkpoints" / f"step_{self.global_step}.pt"
-            )
+        """Save model checkpoint.
 
+        When ``is_best`` is True, only ``best.pt`` is written.
+        Otherwise a periodic ``step_<global_step>.pt`` checkpoint is
+        written (or to ``path`` if explicitly given).
+        """
         # Unwrap torch.compile() wrapper so state_dict keys are clean
         raw_model = getattr(self.model, "_orig_mod", self.model)
 
@@ -137,13 +137,18 @@ class BaseTrainer(ABC, Generic[ConfigT]):
             "best_loss": self.best_loss,
         }
 
-        torch.save(checkpoint, path)
-        print(f"Saved checkpoint to {path}")
-
         if is_best:
             best_path = self.output_dir / "checkpoints" / "best.pt"
             torch.save(checkpoint, best_path)
             print(f"Saved best checkpoint to {best_path}")
+            return
+
+        if path is None:
+            path = (
+                self.output_dir / "checkpoints" / f"step_{self.global_step}.pt"
+            )
+        torch.save(checkpoint, path)
+        print(f"Saved checkpoint to {path}")
 
     def load_checkpoint(self, path: str):
         """Load model checkpoint."""

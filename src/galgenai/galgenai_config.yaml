@@ -1,16 +1,15 @@
 run_name: arcsinh
 cosmos:
   catalog_path: src/galgenai/cosmos/data/test_catalog_30objects.fits
-  hf_dataset_path: src/galgenai/cosmos/data/HSC_dataset30
-  # catalog_path: src/galgenai/cosmos/data/COSMOSWeb_mastercatalog_v1.fits
-  # hf_dataset_path: src/galgenai/cosmos/data/HSC_dataset
-  image_size: 75
+  hf_dataset_path: /home/bbiswas/HSC_dataset/
+  image_size: 32
   HST_snr_threshold: 50
   split_seed: 42 # To split the dataset
   train_ratio: 0.6
   val_ratio: 0.2
   test_ratio: 0.2
   num_workers: 8
+  invert_mask: true # true: dataset masks use 0=good (or absent); trainers expect 1=valid
   max_galaxies: 50000 # inluding train + test + val [Some simulation may fail]
   seed: 42 # To add noise etc.
   max_fft_size: 512
@@ -91,6 +90,7 @@ cosmos:
 hsc_mmu:
   hf_dataset_path: data/hsc_mmu
   num_workers: 0
+  invert_mask: false # set true if survey writes 1=bad pixel (not 1=valid)
   train_ratio: 0.8
   val_ratio: 0.1
   split_seed: 42
@@ -152,6 +152,24 @@ training:
     sample_every: 1000
     validate_every: 1000
     save_every: 5000
+    log_every: 100
+    condition_cols:
+    - mag_model_hsc-g
+    - mag_model_hsc-r
+    - mag_model_hsc-i
+    - mag_model_hsc-z
+    - mag_model_hsc-y
+    - zfinal
+  cfm:
+    steps: 50000
+    lr: 0.001
+    weight_decay: 0.01
+    max_grad_norm: 1.0
+    warmup: 1000
+    sample_every: 5000
+    num_sample_images: 16
+    validate_every: 500
+    save_every: 10000
     log_every: 100
     condition_cols:
     - mag_model_hsc-g
