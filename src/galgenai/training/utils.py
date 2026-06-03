@@ -3,7 +3,8 @@
 from typing import Callable, Optional, Tuple
 
 import torch
-import torch.nn as nn
+
+from .loss import masked_weighted_mse, mse
 
 
 def extract_batch_data(
@@ -62,32 +63,16 @@ def vae_loss(
         Tuple of (total_loss, reconstruction_loss, kl_divergence).
     """
     if reconstruction_loss_fn == "mse":
-        recon_loss = nn.functional.mse_loss(reconstruction, x, reduction="sum")
+        recon_loss = mse(reconstruction, x, reduction="sum")
     elif reconstruction_loss_fn == "masked_weighted_mse":
-        if ivar is None or mask is None:
-            raise ValueError(
-                "masked_weighted_mse requires both ivar and mask arguments"
-            )
-
-        # Denormalize to flux units if denorm_fn provided
-        if denorm_fn is not None:
-            reconstruction_flux = denorm_fn(reconstruction)
-            x_flux = denorm_fn(x)
-        else:
-            reconstruction_flux = reconstruction
-            x_flux = x
-
-        # Compute weighted MSE in flux units
-        squared_error = (reconstruction_flux - x_flux).pow(2)
-        weighted_error = squared_error * ivar * mask.float()
-        num_valid_pixels = mask.float().sum()
-        recon_loss = weighted_error.sum() / num_valid_pixels.clamp(min=1.0)
-        total_pixels = torch.tensor(
-            reconstruction.numel(),
-            dtype=torch.float32,
-            device=reconstruction.device,
+        recon_loss = masked_weighted_mse(
+            reconstruction,
+            x,
+            ivar,
+            mask,
+            denorm_fn=denorm_fn,
+            scale_by_total_pixels=True,
         )
-        recon_loss = recon_loss * total_pixels
     else:
         raise ValueError(
             f"Unknown reconstruction loss: {reconstruction_loss_fn}"
