@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchdiffeq import odeint
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 
 class ResBlock(nn.Module):
@@ -460,6 +460,7 @@ class CFM(nn.Module):
         f: torch.Tensor,
         ivar: Optional[torch.Tensor] = None,
         mask: Optional[torch.Tensor] = None,
+        denorm_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
     ) -> torch.Tensor:
         """
         Compute CFM training loss.
@@ -467,10 +468,18 @@ class CFM(nn.Module):
         Args:
             x1: (batch, channels, H, W) real images from dataset
             f: (batch, cond_vec_dim) conditioning vector
+            ivar: optional inverse-variance weights for masked weighted
+                flow-matching loss
+            mask: optional valid-pixel mask for masked weighted loss
+            denorm_fn: optional denormalization function so the flow
+                loss is computed in raw flux units (only used with
+                ivar/mask)
 
         Returns:
             loss: scalar loss value
         """
+        from ..training.loss import masked_weighted_mse, mse
+
         batch_size = x1.shape[0]
         device = x1.device
 
@@ -492,13 +501,11 @@ class CFM(nn.Module):
 
         # Flow matching loss (weighted MSE when ivar/mask provided)
         if ivar is not None and mask is not None:
-            squared_error = (v_pred - u_t).pow(2)
-            mask_float = mask.float()
-            weighted_error = squared_error * ivar * mask_float
-            num_valid = mask_float.sum().clamp(min=1.0)
-            loss = weighted_error.sum() / num_valid
+            loss = masked_weighted_mse(
+                v_pred, u_t, ivar, mask, denorm_fn=denorm_fn
+            )
         else:
-            loss = F.mse_loss(v_pred, u_t)
+            loss = mse(v_pred, u_t)
 
         return loss
 
