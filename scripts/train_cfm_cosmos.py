@@ -38,6 +38,32 @@ from galgenai.models.cfm import CFM
 from galgenai.training import CFMTrainer, load_cfm_training_config
 
 
+def plot_loss_history(loss_history, out_dir):
+    """Plot train and val loss vs step from a trainer loss_history."""
+    import matplotlib.pyplot as plt
+
+    train_steps = [e["step"] for e in loss_history if "loss" in e]
+    train_loss = [e["loss"] for e in loss_history if "loss" in e]
+    val_steps = [e["step"] for e in loss_history if "val_loss" in e]
+    val_loss = [e["val_loss"] for e in loss_history if "val_loss" in e]
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    ax.plot(train_steps, train_loss, label="train", lw=1)
+    if val_loss:
+        ax.plot(val_steps, val_loss, label="val", marker="o", ms=3)
+    ax.set_xlabel("step")
+    ax.set_ylabel("loss")
+    ax.set_yscale("log")
+    ax.legend()
+    ax.grid(True, which="both", alpha=0.3)
+    fig.tight_layout()
+
+    out_path = Path(out_dir) / "loss_history.png"
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+    print(f"Saved loss plot to: {out_path}")
+
+
 def main():
     device = get_device()
     cfg = load_config()
@@ -218,6 +244,11 @@ def main():
     cfm_trainer.train()
 
     print("CFM training complete!")
+
+    # ------------------------------------------------------------------
+    # Plot loss curves (train + val)
+    # ------------------------------------------------------------------
+    plot_loss_history(cfm_trainer.loss_history, cfm_trainer.output_dir)
 
     # ------------------------------------------------------------------
     # Summary
