@@ -30,13 +30,8 @@ class LCFMTrainer(BaseTrainer[LCFMTrainingConfig]):
         train_loader: DataLoader,
         config: LCFMTrainingConfig,
         val_loader: Optional[DataLoader] = None,
-        denorm_fn: Optional[Any] = None,
     ):
         super().__init__(model, train_loader, config, val_loader)
-        self.denorm_fn = denorm_fn
-
-        if denorm_fn is not None:
-            print("Using denorm in flux for masked_weighted_mse flow loss")
 
         # Additional LCFM-specific directories
         (self.output_dir / "samples").mkdir(exist_ok=True)
@@ -95,7 +90,6 @@ class LCFMTrainer(BaseTrainer[LCFMTrainingConfig]):
             x,
             ivar=ivar,
             mask=mask,
-            denorm_fn=self.denorm_fn,
             return_components=True,
         )
 
@@ -136,7 +130,6 @@ class LCFMTrainer(BaseTrainer[LCFMTrainingConfig]):
                 x,
                 ivar=ivar,
                 mask=mask,
-                denorm_fn=self.denorm_fn,
                 return_components=True,
             )
 

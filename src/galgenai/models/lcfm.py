@@ -15,7 +15,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchdiffeq import odeint
-from typing import Callable, Optional, Tuple
+from typing import Optional, Tuple
 
 
 class ResBlock(nn.Module):
@@ -547,20 +547,20 @@ class LCFM(nn.Module):
         x1: torch.Tensor,
         ivar: Optional[torch.Tensor] = None,
         mask: Optional[torch.Tensor] = None,
-        denorm_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
         return_components: bool = False,
     ) -> torch.Tensor:
         """
         Compute LCFM training loss.
+
+        The flow-matching loss is on the velocity field (a tangent
+        vector in normalized space), so it is computed in normalized
+        units -- no denormalization is applied.
 
         Args:
             x1: (batch, channels, H, W) real images from dataset
             ivar: optional inverse-variance weights for masked weighted
                 flow-matching loss
             mask: optional valid-pixel mask for masked weighted loss
-            denorm_fn: optional denormalization function so the flow
-                loss is computed in raw flux units (only used with
-                ivar/mask)
             return_components: if True, also return individual loss
                 terms
 
@@ -595,9 +595,7 @@ class LCFM(nn.Module):
 
         # 7. Flow matching loss (weighted MSE when ivar/mask provided)
         if ivar is not None and mask is not None:
-            flow_loss = masked_weighted_mse(
-                v_pred, u_t, ivar, mask, denorm_fn=denorm_fn
-            )
+            flow_loss = masked_weighted_mse(v_pred, u_t, ivar, mask)
         else:
             flow_loss = mse(v_pred, u_t)
 

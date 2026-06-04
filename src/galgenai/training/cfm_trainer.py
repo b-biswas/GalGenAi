@@ -65,13 +65,8 @@ class CFMTrainer(BaseTrainer[CFMTrainingConfig]):
         train_loader: DataLoader,
         config: CFMTrainingConfig,
         val_loader: Optional[DataLoader] = None,
-        denorm_fn: Optional[Any] = None,
     ):
         super().__init__(model, train_loader, config, val_loader)
-        self.denorm_fn = denorm_fn
-
-        if denorm_fn is not None:
-            print("Using denorm in flux for masked_weighted_mse flow loss")
 
         # Additional CFM-specific directories
         (self.output_dir / "samples").mkdir(exist_ok=True)
@@ -125,9 +120,7 @@ class CFMTrainer(BaseTrainer[CFMTrainingConfig]):
         """Execute single CFM training step."""
         x, f, ivar, mask = _extract_cfm_batch(batch, self.device)
 
-        loss = self.model.compute_loss(
-            x, f, ivar=ivar, mask=mask, denorm_fn=self.denorm_fn
-        )
+        loss = self.model.compute_loss(x, f)  # , ivar=ivar, mask=mask)
 
         # Backward pass
         self.optimizer.zero_grad()
@@ -159,9 +152,7 @@ class CFMTrainer(BaseTrainer[CFMTrainingConfig]):
 
         for batch in self.val_loader:
             x, f, ivar, mask = _extract_cfm_batch(batch, self.device)
-            loss = self.model.compute_loss(
-                x, f, ivar=ivar, mask=mask, denorm_fn=self.denorm_fn
-            )
+            loss = self.model.compute_loss(x, f)  # , ivar=ivar, mask=mask)
             total_loss += loss.item()
             num_batches += 1
 
