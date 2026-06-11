@@ -87,7 +87,10 @@ class LCFMTrainer(BaseTrainer[LCFMTrainingConfig]):
 
         # Compute loss using model method
         loss, loss_dict = self.model.compute_loss(
-            x, ivar=ivar, mask=mask, return_components=True
+            x,
+            ivar=ivar,
+            mask=mask,
+            return_components=True,
         )
 
         # Backward pass
@@ -124,7 +127,10 @@ class LCFMTrainer(BaseTrainer[LCFMTrainingConfig]):
         for batch in self.val_loader:
             x, ivar, mask = extract_batch_data(batch, self.device)
             _, loss_dict = self.model.compute_loss(
-                x, ivar=ivar, mask=mask, return_components=True
+                x,
+                ivar=ivar,
+                mask=mask,
+                return_components=True,
             )
 
             total_flow_loss += loss_dict["flow_loss"]

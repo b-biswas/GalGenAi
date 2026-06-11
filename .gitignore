@@ -41,3 +41,5 @@ Thumbs.db
 
 # Misc
 old
+scratch
+scripts/*_output

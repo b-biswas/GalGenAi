@@ -15,6 +15,7 @@ from .config import (
     load_vae_training_config,
 )
 from .lcfm_trainer import LCFMTrainer
+from .loss import masked_weighted_mse, mse
 from .utils import extract_batch_data, vae_loss
 from .vae_trainer import VAETrainer
 
@@ -39,4 +40,7 @@ __all__ = [
     # Utilities
     "vae_loss",
     "extract_batch_data",
+    # Loss functions
+    "mse",
+    "masked_weighted_mse",
 ]

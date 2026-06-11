@@ -120,7 +120,7 @@ class CFMTrainer(BaseTrainer[CFMTrainingConfig]):
         """Execute single CFM training step."""
         x, f, ivar, mask = _extract_cfm_batch(batch, self.device)
 
-        loss = self.model.compute_loss(x, f, ivar=ivar, mask=mask)
+        loss = self.model.compute_loss(x, f)  # , ivar=ivar, mask=mask)
 
         # Backward pass
         self.optimizer.zero_grad()
@@ -152,7 +152,7 @@ class CFMTrainer(BaseTrainer[CFMTrainingConfig]):
 
         for batch in self.val_loader:
             x, f, ivar, mask = _extract_cfm_batch(batch, self.device)
-            loss = self.model.compute_loss(x, f, ivar=ivar, mask=mask)
+            loss = self.model.compute_loss(x, f)  # , ivar=ivar, mask=mask)
             total_loss += loss.item()
             num_batches += 1
 

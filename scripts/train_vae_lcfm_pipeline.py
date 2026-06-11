@@ -157,9 +157,10 @@ if __name__ == "__main__":
     print("=" * 60)
 
     print(f"Image normalisation: {vae_image_norm_type}")
-    image_norm_fn, norm_stats = get_image_norm_fn(
+    image_norm_fn, image_denorm_fn, norm_stats = get_image_norm_fn(
         img_norm_type=vae_image_norm_type,
         config=norm_cfg["image"],
+        return_denorm=True,
     )
 
     # Save normalization stats
@@ -360,6 +361,7 @@ if __name__ == "__main__":
         train_loader=train_loader,
         config=lcfm_config,
         val_loader=val_loader,
+        denorm_fn=image_denorm_fn,
     )
     lcfm_trainer.train()
 

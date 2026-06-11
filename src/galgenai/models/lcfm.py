@@ -552,8 +552,15 @@ class LCFM(nn.Module):
         """
         Compute LCFM training loss.
 
+        The flow-matching loss is on the velocity field (a tangent
+        vector in normalized space), so it is computed in normalized
+        units -- no denormalization is applied.
+
         Args:
             x1: (batch, channels, H, W) real images from dataset
+            ivar: optional inverse-variance weights for masked weighted
+                flow-matching loss
+            mask: optional valid-pixel mask for masked weighted loss
             return_components: if True, also return individual loss
                 terms
 
@@ -561,6 +568,8 @@ class LCFM(nn.Module):
             loss: scalar loss value
             (optional) dict with 'flow_loss' and 'kl_loss'
         """
+        from ..training.loss import masked_weighted_mse, mse
+
         batch_size = x1.shape[0]
         device = x1.device
 
@@ -586,13 +595,9 @@ class LCFM(nn.Module):
 
         # 7. Flow matching loss (weighted MSE when ivar/mask provided)
         if ivar is not None and mask is not None:
-            squared_error = (v_pred - u_t).pow(2)
-            mask_float = mask.float()
-            weighted_error = squared_error * ivar * mask_float
-            num_valid = mask_float.sum().clamp(min=1.0)
-            flow_loss = weighted_error.sum() / num_valid
+            flow_loss = masked_weighted_mse(v_pred, u_t, ivar, mask)
         else:
-            flow_loss = F.mse_loss(v_pred, u_t)
+            flow_loss = mse(v_pred, u_t)
 
         # 8. KL divergence loss: KL(N(μ, σ²) || N(0, I))
         # = 0.5 * sum(μ² + σ² - log(σ²) - 1)
