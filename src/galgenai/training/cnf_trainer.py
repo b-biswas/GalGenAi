@@ -79,14 +79,11 @@ class CNFTrainer(BaseTrainer[CNFTrainingConfig]):
             betas=(0.9, 0.999),
         )
 
-        if self.config.scheduler_factory is not None:
-            self.scheduler = self.config.scheduler_factory(self.optimizer)
-        else:
-            self.scheduler = CosineAnnealingLR(
-                self.optimizer,
-                T_max=self.config.num_steps - self.config.warmup_steps,
-                eta_min=self.config.learning_rate * 0.01,
-            )
+        self.scheduler = CosineAnnealingLR(
+            self.optimizer,
+            T_max=self.config.num_steps - self.config.warmup_steps,
+            eta_min=self.config.learning_rate * self.config.lr_min_factor,
+        )
 
     def _get_lr_with_warmup(self) -> float:
         """Get current LR accounting for warmup."""

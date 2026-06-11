@@ -120,6 +120,7 @@ training:
   vae:
     epochs: 30
     lr: 0.0001
+    lr_min_factor: 0.01  # Minimum LR as fraction of initial LR for CosineAnnealingLR
     weight_decay: 0.01
     max_grad_norm: 1.0
     beta: 1.0e-08
@@ -143,6 +144,7 @@ training:
   cnf:
     steps: 20000
     lr: 0.0001
+    lr_min_factor: 0.01  # Minimum LR as fraction of initial LR for CosineAnnealingLR
     weight_decay: 0.01
     max_grad_norm: 1.0
     warmup: 1000
@@ -163,6 +165,7 @@ training:
   cfm:
     steps: 50000
     lr: 0.001
+    lr_min_factor: 0.01  # Minimum LR as fraction of initial LR for CosineAnnealingLR
     weight_decay: 0.01
     max_grad_norm: 1.0
     warmup: 1000
