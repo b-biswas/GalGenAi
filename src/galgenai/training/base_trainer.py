@@ -57,6 +57,7 @@ class BaseTrainer(ABC, Generic[ConfigT]):
         self.global_step = 0
         self.current_epoch = 0
         self.best_loss = float("inf")
+        self.best_step_or_epoch = 0
         self.loss_history: List[Dict[str, Any]] = []
 
         # Optimizer and scheduler (set by subclass)
@@ -135,6 +136,7 @@ class BaseTrainer(ABC, Generic[ConfigT]):
             "config": self.config,
             "loss_history": self.loss_history,
             "best_loss": self.best_loss,
+            "best_step_or_epoch": self.best_step_or_epoch,
         }
 
         if is_best:
@@ -170,6 +172,7 @@ class BaseTrainer(ABC, Generic[ConfigT]):
         self.current_epoch = checkpoint.get("current_epoch", 0)
         self.loss_history = checkpoint.get("loss_history", [])
         self.best_loss = checkpoint.get("best_loss", float("inf"))
+        self.best_step_or_epoch = checkpoint.get("best_step_or_epoch", 0)
 
         print(f"Loaded checkpoint from {path} (step {self.global_step})")
 

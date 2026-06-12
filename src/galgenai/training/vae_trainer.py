@@ -245,7 +245,7 @@ class VAETrainer(BaseTrainer[VAETrainingConfig]):
                     # Track best model based on validation loss
                     if val_loss < self.best_loss:
                         self.best_loss = val_loss
-                        self.best_epoch = epoch
+                        self.best_step_or_epoch = epoch
                         self.save_checkpoint(is_best=True)
                         print(
                             "  New best validation loss:"
@@ -255,7 +255,7 @@ class VAETrainer(BaseTrainer[VAETrainingConfig]):
                     # Print current best info
                     print(
                         f"  Best - Loss: {self.best_loss:.3e} "
-                        f"(Epoch {self.best_epoch})"
+                        f"(Epoch {self.best_step_or_epoch})"
                     )
 
             self._log_metrics(train_metrics)

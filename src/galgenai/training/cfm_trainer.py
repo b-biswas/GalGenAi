@@ -267,12 +267,21 @@ class CFMTrainer(BaseTrainer[CFMTrainingConfig]):
 
                 if current_loss < self.best_loss:
                     self.best_loss = current_loss
+                    self.best_step_or_epoch = self.global_step
                     loss_type = "val" if val_metrics else "train"
                     self.save_checkpoint(is_best=True)
                     pbar.write(
                         f"  New best {loss_type} loss "
                         f"{current_loss:.3e} at step "
                         f"{self.global_step} — saved best.pt"
+                    )
+                else:
+                    loss_type = "val" if val_metrics else "train"
+                    pbar.write(
+                        f"  Current {loss_type} loss: {current_loss:.3e} "
+                        f"at step {self.global_step} | "
+                        f"Best: {self.best_loss:.3e} "
+                        f"at step {self.best_step_or_epoch}"
                     )
 
                 running_loss = 0.0
