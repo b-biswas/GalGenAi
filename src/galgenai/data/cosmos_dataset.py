@@ -23,6 +23,7 @@ def load_fits_dataset(
     redshift_sentinel=-99.0,
     redshift_col=None,
     nx=None,
+    load_noiseless=False,
 ):
     """
     Load a FITS galaxy dataset produced by generate_fits_dataset.py.
@@ -32,9 +33,9 @@ def load_fits_dataset(
     make_loaders().
 
     The returned dataset has one column image (nested dict with keys:
-    flux, ivar, mask, band) plus all metadata columns from the CSV. This
-    layout matches the HSC dataset format so that hsc.HSCDataset can be
-    used directly.
+    flux, ivar, mask, band, and optionally noiseless) plus all metadata
+    columns from the CSV. This layout matches the HSC dataset format so
+    that hsc.HSCDataset can be used directly.
 
     If IVAR is absent from a FITS file, a ones array is used
     (uniform weighting). If MASK is absent, a zeros array is used
@@ -73,6 +74,9 @@ def load_fits_dataset(
         Optional crop size. If provided, images will be center-cropped
         to nx x nx. If None, images are loaded at their original size.
         Default None.
+    load_noiseless : bool
+        If True, load noiseless galaxy images from NOISELESS HDU.
+        If False, noiseless images are not loaded. Default False.
 
     Returns:
     --------
@@ -140,10 +144,12 @@ def load_fits_dataset(
     # avoids reopening FITS files)
     from datasets import load_from_disk
 
-    # Cache path includes crop size
+    # Cache path includes crop size and noiseless flag
     cache_suffix = ""
     if nx is not None:
         cache_suffix += f"_nx{nx}"
+    if load_noiseless:
+        cache_suffix += "_noiseless"
 
     cache_name = (
         f"arrow_cache{cache_suffix}" if cache_suffix else "arrow_cache_raw"
@@ -210,6 +216,11 @@ def load_fits_dataset(
                 else:
                     mask = np.zeros(flux.shape, dtype=np.int32)
 
+                if load_noiseless and "NOISELESS" in hdul:
+                    noiseless = hdul["NOISELESS"].data.astype("float32")
+                else:
+                    noiseless = None
+
             # Crop to target size if nx is provided
             if nx is not None:
                 flux = flux[
@@ -221,6 +232,12 @@ def load_fits_dataset(
                 mask = mask[
                     :, og_nx2 - nx2 : og_nx2 + nx2, og_ny2 - nx2 : og_ny2 + nx2
                 ]
+                if noiseless is not None:
+                    noiseless = noiseless[
+                        :,
+                        og_nx2 - nx2 : og_nx2 + nx2,
+                        og_ny2 - nx2 : og_ny2 + nx2,
+                    ]
 
             sample = {
                 "image": {
@@ -230,6 +247,8 @@ def load_fits_dataset(
                     "band": bands,
                 }
             }
+            if noiseless is not None:
+                sample["image"]["noiseless"] = noiseless
 
             sample.update(row.to_dict())
 
