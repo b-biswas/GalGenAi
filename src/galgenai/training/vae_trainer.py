@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 
 import torch
 import torch.nn as nn
+import torch.optim.lr_scheduler as lr_scheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -52,8 +53,11 @@ class VAETrainer(BaseTrainer[VAETrainingConfig]):
             weight_decay=self.config.weight_decay,
         )
 
-        if self.config.scheduler_factory is not None:
-            self.scheduler = self.config.scheduler_factory(self.optimizer)
+        self.scheduler = lr_scheduler.CosineAnnealingLR(
+            self.optimizer,
+            T_max=self.config.num_epochs,
+            eta_min=self.config.learning_rate * self.config.lr_min_factor,
+        )
 
     def _train_step(self, batch: Any) -> Dict[str, float]:
         """Execute single VAE training step."""
@@ -86,9 +90,6 @@ class VAETrainer(BaseTrainer[VAETrainingConfig]):
         total_loss.backward()
         self._clip_gradients()
         self.optimizer.step()
-
-        if self.scheduler is not None:
-            self.scheduler.step()
 
         self.global_step += 1
 
@@ -179,6 +180,9 @@ class VAETrainer(BaseTrainer[VAETrainingConfig]):
         print(f"Number of epochs: {self.config.num_epochs}")
         print(f"Reconstruction loss: {self.config.reconstruction_loss_fn}")
         print(f"Beta: {self.config.beta}")
+        print(f"Learning rate: {self.config.learning_rate}")
+        if self.scheduler is not None:
+            print(f"LR scheduler: {self.scheduler.__class__.__name__}")
         print(f"Gradient clipping: max_norm={self.config.max_grad_norm}")
         print("-" * 60)
 
@@ -241,13 +245,24 @@ class VAETrainer(BaseTrainer[VAETrainingConfig]):
                     # Track best model based on validation loss
                     if val_loss < self.best_loss:
                         self.best_loss = val_loss
+                        self.best_step_or_epoch = epoch
                         self.save_checkpoint(is_best=True)
                         print(
                             "  New best validation loss:"
                             f" {self.best_loss:.3e} — saved best.pt"
                         )
 
+                    # Print current best info
+                    print(
+                        f"  Best - Loss: {self.best_loss:.3e} "
+                        f"(Epoch {self.best_step_or_epoch})"
+                    )
+
             self._log_metrics(train_metrics)
+
+            # Step learning rate scheduler (once per epoch)
+            if self.scheduler is not None:
+                self.scheduler.step()
 
             # Checkpointing (regular scheduled checkpoints)
             if epoch % self.config.save_every == 0:

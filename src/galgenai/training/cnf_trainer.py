@@ -79,14 +79,11 @@ class CNFTrainer(BaseTrainer[CNFTrainingConfig]):
             betas=(0.9, 0.999),
         )
 
-        if self.config.scheduler_factory is not None:
-            self.scheduler = self.config.scheduler_factory(self.optimizer)
-        else:
-            self.scheduler = CosineAnnealingLR(
-                self.optimizer,
-                T_max=self.config.num_steps - self.config.warmup_steps,
-                eta_min=self.config.learning_rate * 0.01,
-            )
+        self.scheduler = CosineAnnealingLR(
+            self.optimizer,
+            T_max=self.config.num_steps - self.config.warmup_steps,
+            eta_min=self.config.learning_rate * self.config.lr_min_factor,
+        )
 
     def _get_lr_with_warmup(self) -> float:
         """Get current LR accounting for warmup."""
@@ -368,12 +365,21 @@ class CNFTrainer(BaseTrainer[CNFTrainingConfig]):
 
                 if current_loss < self.best_loss:
                     self.best_loss = current_loss
+                    self.best_step_or_epoch = self.global_step
                     loss_type = "val" if val_metrics else "train"
                     self.save_checkpoint(is_best=True)
                     pbar.write(
                         f"  New best {loss_type} loss"
                         f" {current_loss:.4f} at step"
                         f" {self.global_step} — saved best.pt"
+                    )
+                else:
+                    loss_type = "val" if val_metrics else "train"
+                    pbar.write(
+                        f"  Current {loss_type} loss: {current_loss:.4f} "
+                        f"at step {self.global_step} | "
+                        f"Best: {self.best_loss:.4f} "
+                        f"at step {self.best_step_or_epoch}"
                     )
 
                 # Reset running stats
