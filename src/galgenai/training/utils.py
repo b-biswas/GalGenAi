@@ -8,27 +8,42 @@ from .loss import masked_weighted_mse, mse
 
 
 def extract_batch_data(
-    batch, device: torch.device
-) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
+    batch, device: torch.device, extract_noiseless: bool = False
+) -> Tuple[
+    torch.Tensor,
+    Optional[torch.Tensor],
+    Optional[torch.Tensor],
+    Optional[torch.Tensor],
+]:
     """
-    Extract data from batch, handling both tuple and tensor formats.
+    Extract data from batch.
+
+    HSCDataset always returns 5-tuple:
+    (flux, ivar, mask, noiseless_flux, condition)
+    where non-requested values are None.
 
     Args:
-        batch: Either a tensor or tuple of (flux, ivar, mask).
+        batch: 5-tuple from HSCDataset.
         device: Device to move tensors to.
+        extract_noiseless: If True, extract noiseless flux.
 
     Returns:
-        Tuple of (data, ivar, mask). ivar and mask may be None.
+        Tuple of (data, ivar, mask, noiseless_flux). ivar, mask, and
+        noiseless_flux may be None.
     """
-    if isinstance(batch, (tuple, list)):
-        data = batch[0].to(device)
-        ivar = batch[1].to(device) if len(batch) > 1 else None
-        mask = batch[2].to(device) if len(batch) > 2 else None
+    # HSCDataset always returns (flux, ivar, mask, noiseless, cond)
+    flux, ivar, mask, noiseless_flux, _ = batch
+
+    data = flux.to(device)
+    ivar = ivar.to(device) if ivar is not None else None
+    mask = mask.to(device) if mask is not None else None
+
+    if extract_noiseless and noiseless_flux is not None:
+        noiseless_flux = noiseless_flux.to(device)
     else:
-        data = batch.to(device)
-        ivar = None
-        mask = None
-    return data, ivar, mask
+        noiseless_flux = None
+
+    return data, ivar, mask, noiseless_flux
 
 
 def vae_loss(
