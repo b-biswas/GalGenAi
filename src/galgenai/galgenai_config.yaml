@@ -128,7 +128,7 @@ training:
     validate_every: 5
     log_every: 1
     norm_type: arcsinh
-    reconstruction_loss_fn: mse
+    compute_loss_on_noiseless: True  # If true, compute reconstruction loss on noiseless images
   lcfm:
     steps: 100000
     lr: 0.0002
