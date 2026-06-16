@@ -286,6 +286,7 @@ def make_loaders(
     random_seed: int = 42,
     image_norm_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
     return_aux_data: bool = True,
+    return_noiseless_flux: bool = False,
     condition_cols: Optional[list] = None,
     conditional_norm_fn: Optional[
         Callable[[torch.Tensor], torch.Tensor]
@@ -329,6 +330,9 @@ def make_loaders(
     return_aux_data: If True, return (flux, ivar, mask).
         If False with conditioning, return (flux,
         condition). Default True.
+    return_noiseless_flux: If True, return noiseless flux.
+        Dataset must have been loaded with load_noiseless=True.
+        Default False.
     condition_cols: Optional list of column names for
         conditioning variables. If provided, enables
         conditioning mode.
@@ -383,6 +387,7 @@ def make_loaders(
             nx=nx,
             image_norm_fn=image_norm_fn,
             return_aux_data=return_aux_data,
+            return_noiseless_flux=return_noiseless_flux,
             condition_cols=condition_cols or [],
             conditional_norm_fn=conditional_norm_fn,
             invert_mask=invert_mask,
