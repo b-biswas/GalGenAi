@@ -8,6 +8,35 @@ from datasets import Dataset
 from .augmentation import random_rotation_and_flip
 
 
+def custom_collate_fn(batch):
+    """
+    Custom collate function that handles None values in batches.
+
+    HSCDataset returns 5-tuples: (flux, ivar, mask, noiseless, cond)
+    where some values may be None. This function batches non-None values
+    and keeps None values as None.
+
+    Args:
+        batch: List of 5-tuples from HSCDataset
+
+    Returns:
+        5-tuple of batched tensors or None
+    """
+    # Transpose batch (list of tuples -> tuple of lists)
+    transposed = list(zip(*batch, strict=False))
+
+    batched = []
+    for samples in transposed:
+        # Check if all samples are None
+        if all(s is None for s in samples):
+            batched.append(None)
+        else:
+            # Stack non-None tensors using default collate
+            batched.append(torch.utils.data.default_collate(samples))
+
+    return tuple(batched)
+
+
 class HSCDataset(torch.utils.data.Dataset):
     """Unified dataset for galaxy images.
 
@@ -208,12 +237,14 @@ def get_dataset_and_loaders(
         batch_size=batch_size,
         num_workers=num_workers,
         shuffle=True,
+        collate_fn=custom_collate_fn,
     )
     test_loader = DataLoader(
         dataset_test,
         batch_size=batch_size,
         num_workers=num_workers,
         shuffle=False,
+        collate_fn=custom_collate_fn,
     )
 
     return dataset, train_loader, test_loader

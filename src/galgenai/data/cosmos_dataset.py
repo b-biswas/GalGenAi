@@ -8,7 +8,7 @@ from astropy.io import fits
 from datasets import Dataset
 from torch.utils.data import DataLoader, random_split
 
-from galgenai.data.hsc import HSCDataset
+from galgenai.data.hsc import HSCDataset, custom_collate_fn
 
 
 # TODO: CHECK catalog what the sentinel values are
@@ -405,6 +405,7 @@ def make_loaders(
         prefetch_factor=num_workers * 4
         if num_workers > 0
         else None,  # Prefetch batches
+        collate_fn=custom_collate_fn,
     )
     val_loader = DataLoader(
         val_ds,
@@ -414,6 +415,7 @@ def make_loaders(
         pin_memory=use_pin_memory,
         persistent_workers=True if num_workers > 0 else False,
         prefetch_factor=num_workers * 4 if num_workers > 0 else None,
+        collate_fn=custom_collate_fn,
     )
 
     # Create test loader if test set exists
@@ -426,6 +428,7 @@ def make_loaders(
             pin_memory=use_pin_memory,
             persistent_workers=True if num_workers > 0 else False,
             prefetch_factor=num_workers * 4 if num_workers > 0 else None,
+            collate_fn=custom_collate_fn,
         )
     else:
         test_loader = None
