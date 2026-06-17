@@ -38,6 +38,7 @@ class VAETrainingConfig(BaseTrainingConfig):
     # VAE-specific parameters
     reconstruction_loss_fn: str = "mse"
     beta: float = 1.0
+    compute_loss_on_noiseless: bool = False
 
     # Epoch-based training
     num_epochs: int = 10
