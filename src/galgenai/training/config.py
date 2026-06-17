@@ -152,6 +152,7 @@ def load_vae_training_config(
         # VAE-specific
         reconstruction_loss_fn=vae_config["reconstruction_loss_fn"],
         beta=vae_config["beta"],
+        compute_loss_on_noiseless=vae_config["compute_loss_on_noiseless"],
         num_epochs=vae_config["epochs"],
         validate_every=vae_config["validate_every"],
         # Base config
