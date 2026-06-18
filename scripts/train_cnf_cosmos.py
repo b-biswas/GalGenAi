@@ -101,6 +101,9 @@ def main():
 
         # VAE config (only non-training params)
         vae_image_norm_type = vae_cfg["norm_type"]
+        compute_loss_on_noiseless = vae_cfg.get(
+            "compute_loss_on_noiseless", False
+        )
 
         # CNF config (only non-training params)
         condition_cols = cnf_cfg["condition_cols"]
@@ -151,6 +154,7 @@ def main():
         mag_sentinel=cosmos_cfg.get("mag_sentinel", 999.0),
         redshift_sentinel=cosmos_cfg.get("redshift_sentinel", -99.0),
         nx=nx,  # Crop when creating cached dataset
+        load_noiseless=compute_loss_on_noiseless,
     )
 
     n_total = len(dataset_raw)
@@ -205,6 +209,7 @@ def main():
     # Create data loaders (shared by VAE and CNF)
     # ------------------------------------------------------------------
     print("\n\nCreating data loaders:\n")
+    print(f"Compute loss on noiseless: {compute_loss_on_noiseless}")
 
     # Create loaders with both image and conditional normalization
     # Returns (flux, ivar, mask, condition) tuples when
@@ -219,7 +224,8 @@ def main():
         val_ratio=val_ratio,
         random_seed=split_seed,
         image_norm_fn=image_norm_fn,
-        return_aux_data=True,  # Return (flux, ivar, mask, condition)
+        return_aux_data=True,  # Return (flux, ivar, mask, noiseless, cond)
+        return_noiseless_flux=compute_loss_on_noiseless,
         condition_cols=condition_cols,
         conditional_norm_fn=conditional_norm_fn,
         invert_mask=True,

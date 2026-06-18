@@ -66,7 +66,7 @@ def plot_loss_history(loss_history, out_dir):
 
 def main():
     device = get_device()
-    cfg = load_config()
+    cfg = load_config(Path("./exp/cfm_617/galgenai_config.yaml"))
 
     print(f"Using device: {device}")
 
@@ -147,6 +147,7 @@ def main():
         mag_sentinel=cosmos_cfg.get("mag_sentinel", 999.0),
         redshift_sentinel=cosmos_cfg.get("redshift_sentinel", -99.0),
         nx=nx,
+        load_noiseless=True,  # cfm_cfg["train_on_noiseless"],
     )
 
     n_total = len(dataset_raw)
@@ -201,6 +202,7 @@ def main():
         condition_cols=condition_cols,
         conditional_norm_fn=conditional_norm_fn,
         invert_mask=invert_mask,
+        return_noiseless_flux=True,
     )
     print(f"Crop size  : {nx}x{nx} px")
     n_train_batches = (n_train + batch_size - 1) // batch_size
@@ -239,7 +241,7 @@ def main():
         train_loader=train_loader,
         config=cfm_config,
         val_loader=val_loader,
-        denorm_fn=image_denorm_fn,
+        # denorm_fn=image_denorm_fn,
     )
     cfm_trainer.train()
 

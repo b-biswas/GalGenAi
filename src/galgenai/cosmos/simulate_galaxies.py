@@ -55,7 +55,9 @@ def sim_single_band_sersic_galaxy(
     return gal
 
 
-def _save_galaxy_fits(image_array, var_array, path, filter_names):
+def _save_galaxy_fits(
+    image_array, var_array, noiseless_array, path, filter_names
+):
     """
     Save image and inverse-variance arrays as a FITS file.
 
@@ -65,6 +67,8 @@ def _save_galaxy_fits(image_array, var_array, path, filter_names):
                           Inverse-variance: 1 / pixel_variance.
     HDU[3] (ImageHDU)   : mask,   shape (N_bands, H, W), uint32
                           Bitmask; 0 = unmasked.
+    HDU[4] (ImageHDU)   : noiseless, shape (N_bands, H, W), float32
+                          Noiseless galaxy image.
 
     Parameters
     ----------
@@ -72,6 +76,8 @@ def _save_galaxy_fits(image_array, var_array, path, filter_names):
     var_array : np.ndarray, shape (N_bands, H, W), dtype float32
         Per-pixel Poisson variance (galaxy signal +
         sky background counts).
+    noiseless_array : np.ndarray, shape (N_bands, H, W), dtype float32
+        Noiseless galaxy image.
     path : Path or str
     filter_names : list of str
         Band labels written into the FITS headers
@@ -85,6 +91,7 @@ def _save_galaxy_fits(image_array, var_array, path, filter_names):
     primary.header["COMMENT"] = (
         "HDU[3] = MASK   (N_bands, H, W) uint32   0=unmasked"
     )
+    primary.header["COMMENT"] = "HDU[4] = NOISELESS (N_bands, H, W) float32"
     primary.header["NBANDS"] = (
         len(filter_names),
         "Number of photometric bands",
@@ -113,9 +120,12 @@ def _save_galaxy_fits(image_array, var_array, path, filter_names):
     for i, name in enumerate(filter_names):
         hdu_mask.header[f"BAND{i}"] = name
 
-    fits.HDUList([primary, hdu_image, hdu_ivar, hdu_mask]).writeto(
-        str(path), overwrite=True
-    )
+    hdu_noiseless = fits.ImageHDU(noiseless_array, name="NOISELESS")
+    hdu_noiseless.header["BUNIT"] = "electron/s"
+
+    fits.HDUList(
+        [primary, hdu_image, hdu_ivar, hdu_mask, hdu_noiseless]
+    ).writeto(str(path), overwrite=True)
 
 
 def _process_chunk(
@@ -164,7 +174,7 @@ def _process_chunk(
     )
     for i, gr in enumerate(iterator):
         try:
-            images_dict, pixel_variance_dict, galaxy_params = (
+            images_dict, pixel_variance_dict, noiseless_dict, galaxy_params = (
                 sim.generate_image_from_row(gr, filter_names)
             )
 
@@ -174,11 +184,18 @@ def _process_chunk(
             var_array = np.stack(
                 [pixel_variance_dict[b] for b in filter_names], axis=0
             ).astype(np.float32)
+            noiseless_array = np.stack(
+                [noiseless_dict[b] for b in filter_names], axis=0
+            ).astype(np.float32)
 
             galaxy_id = int(gr[catalog_columns["galid"]])
             filename = f"galaxy_{galaxy_id}.fits"
             _save_galaxy_fits(
-                image_array, var_array, images_path / filename, filter_names
+                image_array,
+                var_array,
+                noiseless_array,
+                images_path / filename,
+                filter_names,
             )
 
             # Get the first filter's params (geometry is
@@ -401,6 +418,8 @@ class GalaxySim:
             scale=self.survey.pixel_scale.to_value("arcsec"),
         )
 
+        noiseless_image = image.array.copy()
+
         # Compute per-pixel inverse variance before adding noise.
         # For Poisson statistics, variance = expected counts.
         pixel_variance = np.zeros(image.array.shape, dtype=np.float32)
@@ -419,7 +438,7 @@ class GalaxySim:
             image += noise_image
             pixel_variance += sky_level
 
-        return image, pixel_variance
+        return image, pixel_variance, noiseless_image
 
     def simulate_galaxy(
         self,
@@ -466,10 +485,12 @@ class GalaxySim:
 
         Returns:
         --------
-        tuple : (multi_band_image, multi_band_pixel_variance)
+        tuple : (image, pixel var, noiseless image)
             - multi_band_image: Dictionary of galsim.Image objects
               keyed by filter name
             - multi_band_pixel_variance: Dictionary of variance arrays
+              keyed by filter name
+            - multi_band_noiseless: Dictionary of noiseless image arrays
               keyed by filter name
         """
         if add_noise is not None:
@@ -484,6 +505,7 @@ class GalaxySim:
 
         multi_band_image = {}
         multi_band_pixel_variance = {}
+        multi_band_noiseless = {}
 
         for filter_name, band_params in galaxy_params_multiband.items():
             if filter_name not in self.survey.available_filters:
@@ -495,20 +517,27 @@ class GalaxySim:
                     "provided in psf_params_multiband"
                 )
 
-            image, pixel_variance = self.simulate_galaxy_single_band(
-                galaxy_params_filter=band_params,
-                psf_params_filter=psf_params_multiband[filter_name],
-                filter_name=filter_name,
-                psf_type=psf_type,
-                add_noise=add_noise,
-                galaxy_type=galaxy_type,
-                gsparams=gsparams,
+            image, pixel_variance, noiseless_image = (
+                self.simulate_galaxy_single_band(
+                    galaxy_params_filter=band_params,
+                    psf_params_filter=psf_params_multiband[filter_name],
+                    filter_name=filter_name,
+                    psf_type=psf_type,
+                    add_noise=add_noise,
+                    galaxy_type=galaxy_type,
+                    gsparams=gsparams,
+                )
             )
 
             multi_band_image[filter_name] = image
             multi_band_pixel_variance[filter_name] = pixel_variance
+            multi_band_noiseless[filter_name] = noiseless_image
 
-        return multi_band_image, multi_band_pixel_variance
+        return (
+            multi_band_image,
+            multi_band_pixel_variance,
+            multi_band_noiseless,
+        )
 
     def generate_image_from_row(self, galaxy_row, filter_names=None):
         """
@@ -524,12 +553,14 @@ class GalaxySim:
 
         Returns:
         --------
-        tuple : (images_dict, pixel_variance_dict,
+        tuple : (images_dict, pixel_variance_dict, noiseless_dict,
                  galaxy_params_multi_band)
             - images_dict: Dictionary with filter names as keys and
               image arrays as values
             - pixel_variance_dict: Dictionary with filter names as keys
               and variance arrays as values
+            - noiseless_dict: Dictionary with filter names as keys and
+              noiseless image arrays as values
             - galaxy_params_multi_band: Dictionary with galaxy
               parameters for each filter
         """
@@ -570,11 +601,13 @@ class GalaxySim:
             }
 
         # Generate images
-        multi_band_images, multi_band_pixel_variance = self.simulate_galaxy(
-            galaxy_params_multi_band,
-            psf_params_multi_band,
-            psf_type="moffat",
-            add_noise="all",
+        multi_band_images, multi_band_pixel_variance, multi_band_noiseless = (
+            self.simulate_galaxy(
+                galaxy_params_multi_band,
+                psf_params_multi_band,
+                psf_type="moffat",
+                add_noise="all",
+            )
         )
 
         images_dict = {
@@ -583,7 +616,16 @@ class GalaxySim:
         pixel_variance_dict = {
             band: pv.copy() for band, pv in multi_band_pixel_variance.items()
         }
-        return images_dict, pixel_variance_dict, galaxy_params_multi_band
+        noiseless_dict = {
+            band: noiseless.copy()
+            for band, noiseless in multi_band_noiseless.items()
+        }
+        return (
+            images_dict,
+            pixel_variance_dict,
+            noiseless_dict,
+            galaxy_params_multi_band,
+        )
 
     def filter_high_snr_galaxies(self, inplace=True):
         """

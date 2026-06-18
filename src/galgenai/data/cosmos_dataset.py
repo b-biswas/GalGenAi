@@ -8,7 +8,7 @@ from astropy.io import fits
 from datasets import Dataset
 from torch.utils.data import DataLoader, random_split
 
-from galgenai.data.hsc import HSCDataset
+from galgenai.data.hsc import HSCDataset, custom_collate_fn
 
 
 # TODO: CHECK catalog what the sentinel values are
@@ -23,6 +23,7 @@ def load_fits_dataset(
     redshift_sentinel=-99.0,
     redshift_col=None,
     nx=None,
+    load_noiseless=False,
 ):
     """
     Load a FITS galaxy dataset produced by generate_fits_dataset.py.
@@ -32,9 +33,9 @@ def load_fits_dataset(
     make_loaders().
 
     The returned dataset has one column image (nested dict with keys:
-    flux, ivar, mask, band) plus all metadata columns from the CSV. This
-    layout matches the HSC dataset format so that hsc.HSCDataset can be
-    used directly.
+    flux, ivar, mask, band, and optionally noiseless) plus all metadata
+    columns from the CSV. This layout matches the HSC dataset format so
+    that hsc.HSCDataset can be used directly.
 
     If IVAR is absent from a FITS file, a ones array is used
     (uniform weighting). If MASK is absent, a zeros array is used
@@ -73,6 +74,9 @@ def load_fits_dataset(
         Optional crop size. If provided, images will be center-cropped
         to nx x nx. If None, images are loaded at their original size.
         Default None.
+    load_noiseless : bool
+        If True, load noiseless galaxy images from NOISELESS HDU.
+        If False, noiseless images are not loaded. Default False.
 
     Returns:
     --------
@@ -140,10 +144,12 @@ def load_fits_dataset(
     # avoids reopening FITS files)
     from datasets import load_from_disk
 
-    # Cache path includes crop size
+    # Cache path includes crop size and noiseless flag
     cache_suffix = ""
     if nx is not None:
         cache_suffix += f"_nx{nx}"
+    if load_noiseless:
+        cache_suffix += "_noiseless"
 
     cache_name = (
         f"arrow_cache{cache_suffix}" if cache_suffix else "arrow_cache_raw"
@@ -210,6 +216,11 @@ def load_fits_dataset(
                 else:
                     mask = np.zeros(flux.shape, dtype=np.int32)
 
+                if load_noiseless and "NOISELESS" in hdul:
+                    noiseless = hdul["NOISELESS"].data.astype("float32")
+                else:
+                    noiseless = None
+
             # Crop to target size if nx is provided
             if nx is not None:
                 flux = flux[
@@ -221,6 +232,12 @@ def load_fits_dataset(
                 mask = mask[
                     :, og_nx2 - nx2 : og_nx2 + nx2, og_ny2 - nx2 : og_ny2 + nx2
                 ]
+                if noiseless is not None:
+                    noiseless = noiseless[
+                        :,
+                        og_nx2 - nx2 : og_nx2 + nx2,
+                        og_ny2 - nx2 : og_ny2 + nx2,
+                    ]
 
             sample = {
                 "image": {
@@ -230,6 +247,8 @@ def load_fits_dataset(
                     "band": bands,
                 }
             }
+            if noiseless is not None:
+                sample["image"]["noiseless"] = noiseless
 
             sample.update(row.to_dict())
 
@@ -267,6 +286,7 @@ def make_loaders(
     random_seed: int = 42,
     image_norm_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
     return_aux_data: bool = True,
+    return_noiseless_flux: bool = False,
     condition_cols: Optional[list] = None,
     conditional_norm_fn: Optional[
         Callable[[torch.Tensor], torch.Tensor]
@@ -310,6 +330,9 @@ def make_loaders(
     return_aux_data: If True, return (flux, ivar, mask).
         If False with conditioning, return (flux,
         condition). Default True.
+    return_noiseless_flux: If True, return noiseless flux.
+        Dataset must have been loaded with load_noiseless=True.
+        Default False.
     condition_cols: Optional list of column names for
         conditioning variables. If provided, enables
         conditioning mode.
@@ -364,6 +387,7 @@ def make_loaders(
             nx=nx,
             image_norm_fn=image_norm_fn,
             return_aux_data=return_aux_data,
+            return_noiseless_flux=return_noiseless_flux,
             condition_cols=condition_cols or [],
             conditional_norm_fn=conditional_norm_fn,
             invert_mask=invert_mask,
@@ -386,6 +410,7 @@ def make_loaders(
         prefetch_factor=num_workers * 4
         if num_workers > 0
         else None,  # Prefetch batches
+        collate_fn=custom_collate_fn,
     )
     val_loader = DataLoader(
         val_ds,
@@ -395,6 +420,7 @@ def make_loaders(
         pin_memory=use_pin_memory,
         persistent_workers=True if num_workers > 0 else False,
         prefetch_factor=num_workers * 4 if num_workers > 0 else None,
+        collate_fn=custom_collate_fn,
     )
 
     # Create test loader if test set exists
@@ -407,6 +433,7 @@ def make_loaders(
             pin_memory=use_pin_memory,
             persistent_workers=True if num_workers > 0 else False,
             prefetch_factor=num_workers * 4 if num_workers > 0 else None,
+            collate_fn=custom_collate_fn,
         )
     else:
         test_loader = None

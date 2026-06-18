@@ -8,28 +8,64 @@ from datasets import Dataset
 from .augmentation import random_rotation_and_flip
 
 
+def custom_collate_fn(batch):
+    """
+    Custom collate function that handles None values in batches.
+
+    HSCDataset returns 5-tuples: (flux, ivar, mask, noiseless, cond)
+    where some values may be None. This function batches non-None values
+    and keeps None values as None.
+
+    Args:
+        batch: List of 5-tuples from HSCDataset
+
+    Returns:
+        5-tuple of batched tensors or None
+    """
+    # Transpose batch (list of tuples -> tuple of lists)
+    transposed = list(zip(*batch, strict=False))
+
+    batched = []
+    for samples in transposed:
+        # Check if all samples are None
+        if all(s is None for s in samples):
+            batched.append(None)
+        else:
+            # Stack non-None tensors using default collate
+            batched.append(torch.utils.data.default_collate(samples))
+
+    return tuple(batched)
+
+
 class HSCDataset(torch.utils.data.Dataset):
     """Unified dataset for galaxy images.
 
     For HSC/COSMOS with optional conditioning.
 
-    Returns different data based on parameters:
-    - return_aux_data=True: (flux, ivar, mask)
-    - return_aux_data=False: flux
-    - With conditioning: appends (condition)
+    Always returns 5-tuple:
+    (flux, ivar, mask, noiseless_flux, condition)
+    where non-requested values are None:
+    - return_aux_data=True: ivar and mask are tensors
+    - return_aux_data=False: ivar and mask are None
+    - return_noiseless_flux=True: noiseless_flux is tensor
+    - return_noiseless_flux=False: noiseless_flux is None
+    - condition_cols specified: condition is tensor
+    - condition_cols not specified: condition is None
 
     Mask convention: ``1 = valid, 0 = invalid``.
 
-    Mask convention: downstream losses (VAE/LCFM/CFM weighted MSE) treat
-    the emitted mask as ``1 = valid, 0 = invalid``. Set
-    ``invert_mask=True`` when the source survey writes the opposite
-    convention (``1 = bad pixel flag``).
+    Mask convention:
+    downstream losses (VAE/LCFM/CFM weighted MSE) treat the
+    emitted mask as ``1 = valid, 0 = invalid``.
+    Set ``invert_mask=True`` when the source survey writes
+    the opposite convention (``1 = bad pixel flag``).
 
     Args:
         hf_dataset: HuggingFace Dataset with 'image' column
         nx: Side length of center-cropped patch
         image_norm_fn: Optional normalization
         return_aux_data: Return auxiliary data
+        return_noiseless_flux: Return noiseless flux if available
         condition_cols: Optional column names
         conditional_norm_fn: Optional function
         invert_mask: If True, flip mask
@@ -42,6 +78,7 @@ class HSCDataset(torch.utils.data.Dataset):
         nx: int,
         image_norm_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
         return_aux_data: bool = True,
+        return_noiseless_flux: bool = False,
         condition_cols: Optional[list] = None,
         conditional_norm_fn: Optional[
             Callable[[torch.Tensor], torch.Tensor]
@@ -53,6 +90,7 @@ class HSCDataset(torch.utils.data.Dataset):
         self.nx = nx
         self.image_norm_fn = image_norm_fn
         self.return_aux_data = return_aux_data
+        self.return_noiseless_flux = return_noiseless_flux
         self.condition_cols = condition_cols or []
         self.conditional_norm_fn = conditional_norm_fn
         self.invert_mask = invert_mask
@@ -66,6 +104,14 @@ class HSCDataset(torch.utils.data.Dataset):
         # bands
         self.bands = self.dataset[0]["image"]["band"]
         self.n_bands = self.dataset[0]["image"]["flux"].shape[0]
+
+        # Check if noiseless data is available when requested
+        if self.return_noiseless_flux:
+            if "noiseless" not in self.dataset[0]["image"]:
+                raise ValueError(
+                    "return_noiseless_flux=True "
+                    "but 'noiseless' field not found in dataset."
+                )
 
     def __len__(self):
         return len(self.dataset)
@@ -89,6 +135,12 @@ class HSCDataset(torch.utils.data.Dataset):
         # Extract and crop flux
         flux = self.crop(image_data["flux"])
 
+        # Extract and crop noiseless flux if requested
+        if self.return_noiseless_flux:
+            noiseless_flux = self.crop(image_data["noiseless"])
+        else:
+            noiseless_flux = None
+
         # Process auxiliary data if requested
         if self.return_aux_data:
             # Extract and crop inverse variance
@@ -102,42 +154,56 @@ class HSCDataset(torch.utils.data.Dataset):
             if self.invert_mask:
                 mask = 1 - mask
 
-            # Apply augmentation to flux, ivar, and mask together
+            # Apply augmentation to flux, ivar, mask, and [noiseless]
             if self.augment:
-                flux, ivar, mask = random_rotation_and_flip(flux, ivar, mask)
+                if self.return_noiseless_flux:
+                    flux, ivar, mask, noiseless_flux = (
+                        random_rotation_and_flip(
+                            flux, ivar, mask, noiseless_flux
+                        )
+                    )
+                else:
+                    flux, ivar, mask = random_rotation_and_flip(
+                        flux, ivar, mask
+                    )
         else:
-            # Apply augmentation to flux only
+            # Apply augmentation to flux and optionally noiseless flux
             if self.augment:
-                (flux,) = random_rotation_and_flip(flux)
+                if self.return_noiseless_flux:
+                    flux, noiseless_flux = random_rotation_and_flip(
+                        flux, noiseless_flux
+                    )
+                else:
+                    (flux,) = random_rotation_and_flip(flux)
 
         # Normalize flux after augmentation
         flux_normalized = self.normalize(flux)
 
-        # Build return value based on parameters
-        result = [flux_normalized]
+        if self.return_noiseless_flux:
+            noiseless_flux_normalized = self.normalize(noiseless_flux)
+        else:
+            noiseless_flux_normalized = None
 
-        # Add auxiliary data if requested
-        if self.return_aux_data:
-            result.extend([ivar, mask])
+        # Set ivar and mask to None if not requested
+        if not self.return_aux_data:
+            ivar = None
+            mask = None
 
-        # Add conditioning variables if requested
+        # Get conditioning if requested
+        cond = None
         if self.condition_cols:
             cond = torch.tensor(
                 [float(sample[c]) for c in self.condition_cols],
                 dtype=torch.float32,
             )
-
             # Normalize conditioning if function provided
             if self.conditional_norm_fn is not None:
                 cond = self.conditional_norm_fn(cond)
 
-            result.append(cond)
-
-        # Return single item or tuple
-        if len(result) == 1:
-            # when return_aux_data=False, condition_cols=None
-            return result[0]
-        return tuple(result)
+        # Always return 5-tuple:
+        # (flux, ivar, mask, noiseless_flux, condition)
+        # Non-requested values are None
+        return (flux_normalized, ivar, mask, noiseless_flux_normalized, cond)
 
 
 def get_dataset_and_loaders(
@@ -171,12 +237,14 @@ def get_dataset_and_loaders(
         batch_size=batch_size,
         num_workers=num_workers,
         shuffle=True,
+        collate_fn=custom_collate_fn,
     )
     test_loader = DataLoader(
         dataset_test,
         batch_size=batch_size,
         num_workers=num_workers,
         shuffle=False,
+        collate_fn=custom_collate_fn,
     )
 
     return dataset, train_loader, test_loader

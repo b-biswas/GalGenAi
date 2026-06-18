@@ -14,39 +14,28 @@ from .config import CFMTrainingConfig
 
 
 def _extract_cfm_batch(
-    batch, device: torch.device
+    batch, device: torch.device, noiseless: bool = False
 ) -> Tuple[
     torch.Tensor,
+    Optional[torch.Tensor],
+    Optional[torch.Tensor],
     torch.Tensor,
-    Optional[torch.Tensor],
-    Optional[torch.Tensor],
 ]:
     """
-    Extract (x, f, ivar, mask) from a CFM batch.
+    Extract (x, ivar, mask, f) from a CFM batch.
 
     Expected batch formats (see ``data.hsc`` / ``data.cosmos_dataset``):
     - (flux, cond): conditioning only
     - (flux, ivar, mask, cond): conditioning with aux data
     """
-    if not isinstance(batch, (tuple, list)):
-        raise ValueError(
-            "CFM trainer requires batches with a conditioning vector; "
-            "got a bare tensor"
-        )
-
-    if len(batch) == 2:
-        x, cond = batch
-        ivar = mask = None
-    elif len(batch) == 4:
-        x, ivar, mask, cond = batch
+    x, ivar, mask, x_clean, f = batch
+    if noiseless:
+        x = x_clean
+    if ivar is not None:
         ivar = ivar.to(device)
+    if mask is not None:
         mask = mask.to(device)
-    else:
-        raise ValueError(
-            f"Unexpected CFM batch length {len(batch)}; expected 2 or 4"
-        )
-
-    return x.to(device), cond.to(device), ivar, mask
+    return x.to(device), ivar, mask, f.to(device)
 
 
 class CFMTrainer(BaseTrainer[CFMTrainingConfig]):
@@ -92,14 +81,11 @@ class CFMTrainer(BaseTrainer[CFMTrainingConfig]):
             betas=(0.9, 0.999),
         )
 
-        if self.config.scheduler_factory is not None:
-            self.scheduler = self.config.scheduler_factory(self.optimizer)
-        else:
-            self.scheduler = CosineAnnealingLR(
-                self.optimizer,
-                T_max=self.config.num_steps - self.config.warmup_steps,
-                eta_min=self.config.learning_rate * 0.01,
-            )
+        self.scheduler = CosineAnnealingLR(
+            self.optimizer,
+            T_max=self.config.num_steps - self.config.warmup_steps,
+            eta_min=self.config.learning_rate * self.config.lr_min_factor,
+        )
 
     def _get_lr_with_warmup(self) -> float:
         """Get current LR accounting for warmup."""
@@ -118,9 +104,10 @@ class CFMTrainer(BaseTrainer[CFMTrainingConfig]):
 
     def _train_step(self, batch: Any) -> Dict[str, float]:
         """Execute single CFM training step."""
-        x, f, ivar, mask = _extract_cfm_batch(batch, self.device)
-
-        loss = self.model.compute_loss(x, f)  # , ivar=ivar, mask=mask)
+        x, ivar, mask, f = _extract_cfm_batch(
+            batch, self.device, noiseless=self.config.train_on_noiseless
+        )
+        loss = self.model.compute_loss(x, f)
 
         # Backward pass
         self.optimizer.zero_grad()
@@ -151,7 +138,9 @@ class CFMTrainer(BaseTrainer[CFMTrainingConfig]):
         num_batches = 0
 
         for batch in self.val_loader:
-            x, f, ivar, mask = _extract_cfm_batch(batch, self.device)
+            x, ivar, mask, f = _extract_cfm_batch(
+                batch, self.device, noiseless=self.config.train_on_noiseless
+            )
             loss = self.model.compute_loss(x, f)  # , ivar=ivar, mask=mask)
             total_loss += loss.item()
             num_batches += 1
@@ -177,7 +166,7 @@ class CFMTrainer(BaseTrainer[CFMTrainingConfig]):
             else self.train_loader
         )
         batch = next(iter(loader))
-        _, f, _, _ = _extract_cfm_batch(batch, self.device)
+        _, _, _, f = _extract_cfm_batch(batch, self.device)
         f = f[:num_samples]
 
         raw_model = getattr(self.model, "_orig_mod", self.model)
@@ -270,12 +259,21 @@ class CFMTrainer(BaseTrainer[CFMTrainingConfig]):
 
                 if current_loss < self.best_loss:
                     self.best_loss = current_loss
+                    self.best_step_or_epoch = self.global_step
                     loss_type = "val" if val_metrics else "train"
                     self.save_checkpoint(is_best=True)
                     pbar.write(
                         f"  New best {loss_type} loss "
                         f"{current_loss:.3e} at step "
                         f"{self.global_step} — saved best.pt"
+                    )
+                else:
+                    loss_type = "val" if val_metrics else "train"
+                    pbar.write(
+                        f"  Current {loss_type} loss: {current_loss:.3e} "
+                        f"at step {self.global_step} | "
+                        f"Best: {self.best_loss:.3e} "
+                        f"at step {self.best_step_or_epoch}"
                     )
 
                 running_loss = 0.0

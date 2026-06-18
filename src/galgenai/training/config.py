@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Optional
 
 from galgenai.config import load_config
 
@@ -16,8 +16,8 @@ class BaseTrainingConfig:
     weight_decay: float = 0.0
     max_grad_norm: float = 1.0
 
-    # Scheduler (callable that takes optimizer and returns scheduler)
-    scheduler_factory: Optional[Callable[[Any], Any]] = None
+    # Scheduler parameters
+    lr_min_factor: float = 0.01
 
     # Logging & checkpointing
     log_every: int = 100
@@ -38,6 +38,7 @@ class VAETrainingConfig(BaseTrainingConfig):
     # VAE-specific parameters
     reconstruction_loss_fn: str = "mse"
     beta: float = 1.0
+    compute_loss_on_noiseless: bool = False
 
     # Epoch-based training
     num_epochs: int = 10
@@ -96,6 +97,8 @@ class CFMTrainingConfig(BaseTrainingConfig):
     learning_rate: float = 2e-4
     weight_decay: float = 0.01
 
+    train_on_noiseless: bool = False
+
 
 @dataclass
 class CNFTrainingConfig(BaseTrainingConfig):
@@ -151,18 +154,19 @@ def load_vae_training_config(
         # VAE-specific
         reconstruction_loss_fn=vae_config["reconstruction_loss_fn"],
         beta=vae_config["beta"],
+        compute_loss_on_noiseless=vae_config["compute_loss_on_noiseless"],
         num_epochs=vae_config["epochs"],
         validate_every=vae_config["validate_every"],
         # Base config
         learning_rate=vae_config["lr"],
         weight_decay=vae_config["weight_decay"],
         max_grad_norm=vae_config["max_grad_norm"],
+        lr_min_factor=vae_config.get("lr_min_factor", 0.01),
         log_every=vae_config["log_every"],
         save_every=vae_config["save_every"],
         output_dir=str(output_dir),
         checkpoint_path=None,
         device=None,
-        scheduler_factory=None,
     )
 
 
@@ -208,7 +212,6 @@ def load_lcfm_training_config(
         output_dir=str(output_dir),
         checkpoint_path=None,
         device=None,
-        scheduler_factory=None,
     )
 
 
@@ -251,7 +254,7 @@ def load_cfm_training_config(
         output_dir=str(output_dir),
         checkpoint_path=None,
         device=None,
-        scheduler_factory=None,
+        train_on_noiseless=cfm_config["train_on_noiseless"],
     )
 
 
@@ -296,5 +299,4 @@ def load_cnf_training_config(
         output_dir=str(output_dir),
         checkpoint_path=None,
         device=None,
-        scheduler_factory=None,
     )

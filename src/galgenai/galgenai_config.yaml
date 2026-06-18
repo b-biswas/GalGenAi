@@ -132,6 +132,7 @@ training:
   vae:
     epochs: 30
     lr: 0.0001
+    lr_min_factor: 0.01  # Minimum LR as fraction of initial LR for CosineAnnealingLR
     weight_decay: 0.01
     max_grad_norm: 1.0
     beta: 1.0e-08
@@ -139,7 +140,7 @@ training:
     validate_every: 5
     log_every: 1
     norm_type: arcsinh
-    reconstruction_loss_fn: mse
+    compute_loss_on_noiseless: True  # If true, compute reconstruction loss on noiseless images
   lcfm:
     steps: 100000
     lr: 0.0002
@@ -155,6 +156,7 @@ training:
   cnf:
     steps: 20000
     lr: 0.0001
+    lr_min_factor: 0.01  # Minimum LR as fraction of initial LR for CosineAnnealingLR
     weight_decay: 0.01
     max_grad_norm: 1.0
     warmup: 1000
@@ -175,11 +177,13 @@ training:
   cfm:
     steps: 50000
     lr: 0.001
+    lr_min_factor: 0.01  # Minimum LR as fraction of initial LR for CosineAnnealingLR
     weight_decay: 0.01
     max_grad_norm: 1.0
     warmup: 1000
     sample_every: 5000
     num_sample_images: 16
+    train_on_noiseless: True
     validate_every: 500
     save_every: 10000
     log_every: 100
