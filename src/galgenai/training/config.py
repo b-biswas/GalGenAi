@@ -38,6 +38,7 @@ class VAETrainingConfig(BaseTrainingConfig):
     # VAE-specific parameters
     reconstruction_loss_fn: str = "mse"
     beta: float = 1.0
+    compute_loss_on_noiseless: bool = False
 
     # Epoch-based training
     num_epochs: int = 10
@@ -96,6 +97,8 @@ class CFMTrainingConfig(BaseTrainingConfig):
     learning_rate: float = 2e-4
     weight_decay: float = 0.01
 
+    train_on_noiseless: bool = False
+
 
 @dataclass
 class CNFTrainingConfig(BaseTrainingConfig):
@@ -151,6 +154,7 @@ def load_vae_training_config(
         # VAE-specific
         reconstruction_loss_fn=vae_config["reconstruction_loss_fn"],
         beta=vae_config["beta"],
+        compute_loss_on_noiseless=vae_config["compute_loss_on_noiseless"],
         num_epochs=vae_config["epochs"],
         validate_every=vae_config["validate_every"],
         # Base config
@@ -250,7 +254,7 @@ def load_cfm_training_config(
         output_dir=str(output_dir),
         checkpoint_path=None,
         device=None,
-        scheduler_factory=None,
+        train_on_noiseless=cfm_config["train_on_noiseless"],
     )
 
 

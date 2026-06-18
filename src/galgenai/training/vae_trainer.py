@@ -61,15 +61,25 @@ class VAETrainer(BaseTrainer[VAETrainingConfig]):
 
     def _train_step(self, batch: Any) -> Dict[str, float]:
         """Execute single VAE training step."""
-        data, ivar, mask = extract_batch_data(batch, self.device)
+        data, ivar, mask, noiseless_flux = extract_batch_data(
+            batch,
+            self.device,
+            extract_noiseless=self.config.compute_loss_on_noiseless,
+        )
 
         # Forward pass
         reconstruction, mu, logvar = self.model(data)
 
+        # Use noiseless flux as target if enabled
+        if self.config.compute_loss_on_noiseless:
+            target = noiseless_flux
+        else:
+            target = data
+
         # Compute loss
         total_loss, recon_loss, kl_loss = vae_loss(
             reconstruction,
-            data,
+            target,
             mu,
             logvar,
             reconstruction_loss_fn=self.config.reconstruction_loss_fn,
@@ -147,12 +157,22 @@ class VAETrainer(BaseTrainer[VAETrainingConfig]):
         num_batches = 0
 
         for batch in self.val_loader:
-            data, ivar, mask = extract_batch_data(batch, self.device)
+            data, ivar, mask, noiseless_flux = extract_batch_data(
+                batch,
+                self.device,
+                extract_noiseless=self.config.compute_loss_on_noiseless,
+            )
             reconstruction, mu, logvar = self.model(data)
+
+            # Use noiseless flux as target if enabled
+            if self.config.compute_loss_on_noiseless:
+                target = noiseless_flux
+            else:
+                target = data
 
             total_loss, recon_loss, kl_loss = vae_loss(
                 reconstruction,
-                data,
+                target,
                 mu,
                 logvar,
                 reconstruction_loss_fn=self.config.reconstruction_loss_fn,
@@ -180,6 +200,9 @@ class VAETrainer(BaseTrainer[VAETrainingConfig]):
         print(f"Number of epochs: {self.config.num_epochs}")
         print(f"Reconstruction loss: {self.config.reconstruction_loss_fn}")
         print(f"Beta: {self.config.beta}")
+        print(
+            f"Compute noiseless loss: {self.config.compute_loss_on_noiseless}"
+        )
         print(f"Learning rate: {self.config.learning_rate}")
         if self.scheduler is not None:
             print(f"LR scheduler: {self.scheduler.__class__.__name__}")
@@ -199,7 +222,11 @@ class VAETrainer(BaseTrainer[VAETrainingConfig]):
         # Warmup forward pass to pay compile cost before the
         # first epoch.
         warmup_batch = next(iter(self.train_loader))
-        data, _, _ = extract_batch_data(warmup_batch, self.device)
+        data, _, _, _ = extract_batch_data(
+            warmup_batch,
+            self.device,
+            extract_noiseless=self.config.compute_loss_on_noiseless,
+        )
         with torch.no_grad():
             self.model(data)
 
