@@ -171,6 +171,7 @@ training:
     warmup: 1000
     sample_every: 5000
     num_sample_images: 16
+    train_on_noiseless: True
     validate_every: 500
     save_every: 10000
     log_every: 100
