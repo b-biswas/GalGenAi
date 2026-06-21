@@ -21,7 +21,7 @@ comparisons isolate model fidelity from estimator bias.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Callable, Sequence
 
 import numpy as np
 import torch
@@ -31,7 +31,6 @@ from photutils.aperture import EllipticalAperture
 from photutils.segmentation import SourceCatalog, detect_sources
 from surveycodex import get_survey
 
-from ..data.normalization import ASinhNormStats, arcsinh_denorm
 from .units import counts_to_magnitude
 
 # Default config values (overridable via kwargs).
@@ -104,13 +103,20 @@ def fluxes_to_mags(flux, survey=None, bands=DEFAULT_BANDS):
 
 def measure_source(
     image: torch.Tensor,
-    norm_stats: ASinhNormStats,
+    denorm_fn: Callable[[torch.Tensor], torch.Tensor],
     *,
     n_sigma: float = DEFAULT_N_SIGMA,
     thresh_sigma: float = DEFAULT_THRESH_SIGMA,
     npix: int = DEFAULT_NPIX,
 ) -> tuple[np.ndarray, float, float]:
     """Aperture photometry + morphology for one (C, H, W) stamp.
+
+    Parameters:
+    -----------
+    image: (C, H, W) tensor of normalized image.
+    denorm_fn: Function to denormalize the image from normalized to
+        physical flux units. Should accept a torch.Tensor and return
+        a torch.Tensor.
 
     Returns ``(flux, axis_ratio, size)``:
         flux: (C,) aperture flux per band,
@@ -123,7 +129,7 @@ def measure_source(
     axis_ratio/size are NaN if nothing is detected.
     """
     norm = image.detach().cpu().numpy()  # (C, H, W) normalized
-    phys = arcsinh_denorm(image.detach().cpu(), norm_stats).numpy()
+    phys = denorm_fn(image.detach().cpu()).numpy()
     ref = norm.sum(axis=0)  # (H, W) high-S/N reference
     h, w = ref.shape
 
@@ -160,7 +166,7 @@ def measure_source(
 
 def measure_batch(
     images: torch.Tensor,
-    norm_stats: ASinhNormStats,
+    denorm_fn: Callable[[torch.Tensor], torch.Tensor],
     *,
     survey=None,
     bands=DEFAULT_BANDS,
@@ -170,15 +176,22 @@ def measure_batch(
 ) -> GalaxyProperties:
     """Measure :class:`GalaxyProperties` for a batch of stamps.
 
-    ``images`` is a (N, C, H, W) tensor (e.g. real test images or model
-    samples), in normalized units matching ``norm_stats``. ``survey``
-    and ``bands`` set the zeropoint used to turn flux into AB magnitudes
-    (see :func:`fluxes_to_mags`).
+    Parameters:
+    -----------
+    images: (N, C, H, W) tensor (e.g. real test images or model samples)
+        in normalized units.
+    denorm_fn: Function to denormalize the images from normalized to
+        physical flux units.
+    survey: surveycodex Survey or survey name for magnitude calibration.
+    bands: Filter names per channel.
+
+    ``survey`` and ``bands`` set the zeropoint used to turn flux into AB
+    magnitudes (see :func:`fluxes_to_mags`).
     """
     cfg = dict(n_sigma=n_sigma, thresh_sigma=thresh_sigma, npix=npix)
     fluxes, ratios, sizes = [], [], []
     for img in images:
-        flux, q, size = measure_source(img, norm_stats, **cfg)
+        flux, q, size = measure_source(img, denorm_fn, **cfg)
         fluxes.append(flux)
         ratios.append(q)
         sizes.append(size)
@@ -194,7 +207,7 @@ def measure_batch(
 def measure_galaxy_properties(
     test_images: torch.Tensor,
     pred_images: torch.Tensor,
-    norm_stats: ASinhNormStats,
+    denorm_fn: Callable[[torch.Tensor], torch.Tensor],
     *,
     survey=None,
     bands=DEFAULT_BANDS,
@@ -204,8 +217,18 @@ def measure_galaxy_properties(
 ) -> tuple[GalaxyProperties, GalaxyProperties]:
     """Measure properties for a test batch and its predictions.
 
-    ``test_images`` and ``pred_images`` are (N, C, H, W) tensors in
-    normalized units. Returns ``(test_props, pred_props)``, each a
+    Parameters:
+    -----------
+    test_images: (N, C, H, W) tensor of test/real images in normalized
+        units.
+    pred_images: (N, C, H, W) tensor of predicted/generated images in
+        normalized units.
+    denorm_fn: Function to denormalize the images from normalized to
+        physical flux units.
+    survey: surveycodex Survey or survey name for magnitude calibration.
+    bands: Filter names per channel.
+
+    Returns ``(test_props, pred_props)``, each a
     :class:`GalaxyProperties`. The same estimator and config are applied
     to both so the two are directly comparable.
     """
@@ -218,6 +241,6 @@ def measure_galaxy_properties(
         npix=npix,
     )
     return (
-        measure_batch(test_images, norm_stats, **cfg),
-        measure_batch(pred_images, norm_stats, **cfg),
+        measure_batch(test_images, denorm_fn, **cfg),
+        measure_batch(pred_images, denorm_fn, **cfg),
     )
