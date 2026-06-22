@@ -73,6 +73,10 @@ cosmos:
       - mag_model_hsc-z
       - mag_model_hsc-y
       - zfinal
+      - radius_sersic
+      - sersic
+      - axratio_sersic
+      - angle_sersic
       min:
       - 18.68
       - 18.35
@@ -80,6 +84,10 @@ cosmos:
       - 17.82
       - 17.61
       - 0.0
+      - 0.000985780046533
+      - 0.3
+      - 0.000049997314704
+      - -89.99332091505602
       max:
       - 30.35
       - 27.38
@@ -87,6 +95,10 @@ cosmos:
       - 26.93
       - 29.05
       - 4.96
+      - 10.847463449937509
+      - 6.199772654376666
+      - 0.9999991470187218
+      - 89.99753429314939
 hsc_mmu:
   hf_dataset_path: data/hsc_mmu
   num_workers: 0
@@ -182,3 +194,7 @@ training:
     - mag_model_hsc-z
     - mag_model_hsc-y
     - zfinal
+    - radius_sersic
+    - sersic
+    - axratio_sersic
+    - angle_sersic

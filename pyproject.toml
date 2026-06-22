@@ -19,6 +19,7 @@ dependencies = [
     "astropy",
     "galsim",
     "surveycodex",
+    "photutils>=3.0.0",
 ]
 
 [project.scripts]
