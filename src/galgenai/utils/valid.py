@@ -46,18 +46,21 @@ class GalaxyProperties:
     """Per-galaxy properties for a batch of images.
 
     Attributes (N galaxies, C bands):
-        flux:       (N, C) aperture flux per band (electron counts).
-        mag:        (N, C) AB magnitude (survey-zeropoint calibrated).
-        axis_ratio: (N,)   b/a (semiminor/semimajor sigma), in (0, 1].
-        size:       (N,)   semimajor sigma in px (Gaussian-equivalent).
+        flux:        (N, C) aperture flux per band (electron counts).
+        mag:         (N, C) AB magnitude (survey-zeropoint calibrated).
+        axis_ratio:  (N,)   b/a (semiminor/semimajor sigma), in (0, 1].
+        size:        (N,)   semimajor sigma in px (Gaussian-equivalent).
+        orientation: (N,)   semimajor-axis position angle in degrees,
+                     CCW from the +x axis, in (-90, 90].
 
-    Undetected sources have NaN flux/mag and NaN axis_ratio/size.
+    Undetected sources have NaN in every field.
     """
 
     flux: np.ndarray
     mag: np.ndarray
     axis_ratio: np.ndarray
     size: np.ndarray
+    orientation: np.ndarray
 
     @classmethod
     def concatenate(
@@ -69,6 +72,7 @@ class GalaxyProperties:
             mag=np.concatenate([p.mag for p in items]),
             axis_ratio=np.concatenate([p.axis_ratio for p in items]),
             size=np.concatenate([p.size for p in items]),
+            orientation=np.concatenate([p.orientation for p in items]),
         )
 
 
@@ -108,7 +112,7 @@ def measure_source(
     n_sigma: float = DEFAULT_N_SIGMA,
     thresh_sigma: float = DEFAULT_THRESH_SIGMA,
     npix: int = DEFAULT_NPIX,
-) -> tuple[np.ndarray, float, float]:
+) -> tuple[np.ndarray, float, float, float]:
     """Aperture photometry + morphology for one (C, H, W) stamp.
 
     Parameters:
@@ -118,15 +122,17 @@ def measure_source(
         physical flux units. Should accept a torch.Tensor and return
         a torch.Tensor.
 
-    Returns ``(flux, axis_ratio, size)``:
+    Returns ``(flux, axis_ratio, size, orientation)``:
         flux: (C,) aperture flux per band,
         axis_ratio: b/a (semiminor/semimajor sigma), in (0, 1],
-        size: semimajor sigma in px (Gaussian-equivalent).
+        size: semimajor sigma in px (Gaussian-equivalent),
+        orientation: semimajor-axis position angle in degrees, CCW
+            from the +x axis, in (-90, 90].
 
     Shape/centroid come from the source at the stamp centre (segmented
     on the band-summed normalized reference); that single elliptical
-    aperture is integrated in every de-normalized band. Flux is NaN and
-    axis_ratio/size are NaN if nothing is detected.
+    aperture is integrated in every de-normalized band. Every returned
+    value is NaN if nothing is detected.
     """
     norm = image.detach().cpu().numpy()  # (C, H, W) normalized
     phys = denorm_fn(image.detach().cpu()).numpy()
@@ -137,7 +143,7 @@ def measure_source(
     sub = ref - med
     segm = detect_sources(sub, threshold=thresh_sigma * std, npixels=npix)
     if segm is None:
-        return np.full(phys.shape[0], np.nan), np.nan, np.nan
+        return np.full(phys.shape[0], np.nan), np.nan, np.nan, np.nan
 
     cat = SourceCatalog(sub, segm)
     lbl = segm.data[h // 2, w // 2]  # prefer the source at the stamp centre
@@ -150,6 +156,7 @@ def measure_source(
     smaj = src.semimajor_sigma.value  # px (Gaussian-equiv), not * n_sigma
     smin = src.semiminor_sigma.value
     q = smin / smaj  # axis ratio b/a, scale-free
+    orient = src.orientation.to(u.deg).value  # PA in deg, in (-90, 90]
 
     x0, y0 = float(src.xcentroid), float(src.ycentroid)
     a = n_sigma * smaj
@@ -161,7 +168,7 @@ def measure_source(
     for k, band in enumerate(phys):
         _, med_b, _ = sigma_clipped_stats(band)
         out[k] = ap.do_photometry(band - med_b)[0][0]  # bkg-subtracted sum
-    return out, q, smaj
+    return out, q, smaj, orient
 
 
 def measure_batch(
@@ -189,18 +196,20 @@ def measure_batch(
     magnitudes (see :func:`fluxes_to_mags`).
     """
     cfg = dict(n_sigma=n_sigma, thresh_sigma=thresh_sigma, npix=npix)
-    fluxes, ratios, sizes = [], [], []
+    fluxes, ratios, sizes, orients = [], [], [], []
     for img in images:
-        flux, q, size = measure_source(img, denorm_fn, **cfg)
+        flux, q, size, orient = measure_source(img, denorm_fn, **cfg)
         fluxes.append(flux)
         ratios.append(q)
         sizes.append(size)
+        orients.append(orient)
     flux = np.array(fluxes)  # (N, C)
     return GalaxyProperties(
         flux=flux,
         mag=fluxes_to_mags(flux, survey=survey, bands=bands),
         axis_ratio=np.array(ratios),
         size=np.array(sizes),
+        orientation=np.array(orients),
     )
 
 
