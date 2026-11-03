@@ -10,8 +10,8 @@ cols:
 - mag_model_disk_hsc-z
 - mag_model_disk_hsc-y
 - zfinal
-- bulge_radius_deg
-- disk_radius_deg
+- bulge_radius_arcsec
+- disk_radius_arcsec
 - bulge_axratio
 - disk_axratio
 - angle_bd
